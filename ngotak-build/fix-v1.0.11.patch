@@ -1,0 +1,676 @@
+diff --git a/app.config.js b/app.config.js
+index 7fbe94e..dd21499 100644
+--- a/app.config.js
++++ b/app.config.js
+@@ -121,7 +121,7 @@ module.exports = () => {
+       autolinking: {exclude: ['expo-splash-screen']},
+       plugins,
+       slug: 'ngotakstream-qx',
+-      version: '1.0.3',
++      version: '1.0.11',
+       userInterfaceStyle: 'dark',
+       experiments: {
+         reactCompiler: true,
+@@ -132,7 +132,7 @@ module.exports = () => {
+           : {}),
+         minSdkVersion: 24,
+         package: PACKAGE_NAME,
+-        versionCode: 193,
++        versionCode: 201,
+         permissions: [
+           'FOREGROUND_SERVICE',
+           'FOREGROUND_SERVICE_DATA_SYNC',
+diff --git a/android/app/build.gradle b/android/app/build.gradle
+index a36ebbb..f11365b 100644
+--- a/android/app/build.gradle
++++ b/android/app/build.gradle
+@@ -101,8 +101,8 @@ android {
+         applicationId 'id.qxshaa.ngotakstreamqx'
+         minSdkVersion rootProject.ext.minSdkVersion
+         targetSdkVersion rootProject.ext.targetSdkVersion
+-        versionCode 193
+-        versionName "1.0.3"
++        versionCode 201
++        versionName "1.0.11"
+ 
+         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
+     }
+diff --git a/package.json b/package.json
+index 722aede..890ae87 100644
+--- a/package.json
++++ b/package.json
+@@ -52,6 +52,7 @@
+     "expo-font": "~57.0.1",
+     "expo-intent-launcher": "~57.0.1",
+     "expo-navigation-bar": "~57.0.2",
++    "expo-screen-orientation": "~57.0.2",
+     "expo-status-bar": "~57.0.1",
+     "expo-system-ui": "~57.0.2",
+     "nativewind": "^4.2.1",
+diff --git a/package-lock.json b/package-lock.json
+index 5e6a2e2..1fe4502 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -44,6 +44,7 @@
+         "expo-font": "~57.0.1",
+         "expo-intent-launcher": "~57.0.1",
+         "expo-navigation-bar": "~57.0.2",
++        "expo-screen-orientation": "~57.0.2",
+         "expo-status-bar": "~57.0.1",
+         "expo-system-ui": "~57.0.2",
+         "nativewind": "^4.2.1",
+@@ -10326,6 +10327,16 @@
+         "react-native": "*"
+       }
+     },
++    "node_modules/expo-screen-orientation": {
++      "version": "57.0.2",
++      "resolved": "https://registry.npmjs.org/expo-screen-orientation/-/expo-screen-orientation-57.0.2.tgz",
++      "integrity": "sha512-9wIa/dU561fidHYChkg6LIDAcYr8uMBa8fOws1Km9/slaF3N/a2kgcy0TUZWvNIe7at3r4g2kVva9vRBJBkaEQ==",
++      "license": "MIT",
++      "peerDependencies": {
++        "expo": "*",
++        "react-native": "*"
++      }
++    },
+     "node_modules/expo-server": {
+       "version": "57.0.1",
+       "resolved": "https://registry.npmjs.org/expo-server/-/expo-server-57.0.1.tgz",
+diff --git a/src/App.tsx b/src/App.tsx
+index df2940e..eb9215f 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -64,6 +64,7 @@ import useNavigationPreferencesStore from './lib/zustand/navigationPreferencesSt
+ import {
+   initializeSyncService,
+   publishSyncManifest,
++  isSyncPausedForPlayer,
+   syncFromSharedFolder,
+ } from './lib/sync/syncService';
+ import StreamingTabBar from './components/navigation/StreamingTabBar';
+@@ -192,9 +193,17 @@ const App = () => {
+     'BebasNeue': require('../assets/fonts/BebasNeue.ttf'),
+   });
+   const provider = useContentStore(state => state.provider);
+-  const {width: windowWidth} = useWindowDimensions();
+-  const isLargeScreen = windowWidth > 768;
++  const {width: windowWidth, height: windowHeight} = useWindowDimensions();
++  // Breakpoint mengikuti konvensi Android smallest-width (sw-dp): pakai
++  // dimensi TERKECIL window, bukan lebar mentah. Dengan begitu HP di
++  // landscape (lebar ~800dp+) tidak salah dianggap layar besar, dan state
++  // lebar basi (stale) setelah siklus fullscreen/orientation player tidak
++  // lagi memunculkan sidebar desktop di HP. Tablet tetap ke-detect benar
++  // di kedua orientasi.
++  const isLargeScreen = Math.min(windowWidth, windowHeight) > 768;
++  const isPhone = !isLargeScreen;
+   const useLinoteeFont = useThemeStore(state => state.useLinoteeFont);
++
+   LogBox.ignoreLogs([
+     'You have passed a style to FlashList',
+     'new NativeEventEmitter()',
+@@ -236,12 +245,16 @@ const App = () => {
+   useEffect(() => {
+     const subscription = AppState.addEventListener('change', state => {
+       if (state === 'active') {
+-        reconcileCompletedDownloadOutputs().catch(error =>
+-          console.warn('Download foreground reconciliation failed:', error),
+-        );
+-        syncFromSharedFolder().catch(error =>
+-          console.warn('[NgotakSync] Foreground sync failed:', error),
+-        );
++        // Jangan menyibukkan JS thread dengan I/O download/sync saat player
++        // sedang aktif (rotasi & kontrol player diprioritaskan).
++        if (!isSyncPausedForPlayer()) {
++          reconcileCompletedDownloadOutputs().catch(error =>
++            console.warn('Download foreground reconciliation failed:', error),
++          );
++          syncFromSharedFolder().catch(error =>
++            console.warn('[NgotakSync] Foreground sync failed:', error),
++          );
++        }
+       } else {
+         publishSyncManifest().catch(error =>
+           console.warn('[NgotakSync] Background publish failed:', error),
+@@ -253,7 +266,7 @@ const App = () => {
+ 
+   useEffect(() => {
+     const interval = setInterval(() => {
+-      if (AppState.currentState === 'active') {
++      if (AppState.currentState === 'active' && !isSyncPausedForPlayer()) {
+         syncFromSharedFolder().catch(error =>
+           console.warn('[NgotakSync] Periodic sync failed:', error),
+         );
+diff --git a/src/screens/home/Player.tsx b/src/screens/home/Player.tsx
+index dbfc209..f049b16 100644
+--- a/src/screens/home/Player.tsx
++++ b/src/screens/home/Player.tsx
+@@ -4,6 +4,7 @@ import {
+   AppState,
+   AppStateStatus,
+   BackHandler,
++  InteractionManager,
+   ScrollView,
+   Text,
+   ToastAndroid,
+@@ -27,6 +28,7 @@ import Orientation, {
+   OrientationLocker,
+   LANDSCAPE,
+ } from 'react-native-orientation-locker';
++import * as ExpoScreenOrientation from 'expo-screen-orientation';
+ import VideoPlayer from '@8man/react-native-media-console';
+ import {useFocusEffect, useNavigation} from '@react-navigation/native';
+ import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+@@ -54,7 +56,10 @@ import {
+ import * as NavigationBar from 'expo-navigation-bar';
+ import {StatusBar} from 'react-native';
+ import {torrentManager} from '../../lib/torrentManager';
+-import {syncFromSharedFolder} from '../../lib/sync/syncService';
++import {
++  setSyncPausedForPlayer,
++  syncFromSharedFolder,
++} from '../../lib/sync/syncService';
+ import {useM3Colors} from '../../theme/M3PaletteContext';
+ import useContinueWatchingStore from '../../lib/zustand/continueWatchingStore';
+ import useLocalVideoStore from '../../lib/zustand/localVideoStore';
+@@ -214,6 +219,13 @@ const exitFullScreen = () => {
+     NavigationBar.setVisibilityAsync('visible');
+     StatusBar.setHidden(false, 'slide');
+   }
++  // Pulihkan orientasi PORTRAIT saat mode fullscreen ditinggalkan —
++  // mengikuti implementasi base v1.0.3-fixed yang terbukti berfungsi:
++  // lockToPortrait dipanggil di exitFullScreen, sebelum goBack (BackHandler),
++  // dan saat beforeRemove, berdampingan dengan <OrientationLocker LANDSCAPE>
++  // yang di-render pada setiap branch tampilan player.
++  Orientation.lockToPortrait();
++  lockPortraitExpo();
+ };
+ 
+ const applyFullscreenMode = (isFullScreenEnabled: boolean) => {
+@@ -235,20 +247,65 @@ const reapplyFullscreenMode = (isFullScreenEnabled: boolean) => {
+   }
+ };
+ 
++// ── Jalur lock orientasi REDUNDAN (safety net) ─────────────────────────────
++// Pola base v1.0.3-fixed (OrientationLocker LANDSCAPE per-branch +
++// Orientation.lockToPortrait di exit path) TETAP menjadi mekanisme utama dan
++// tidak diubah. Jalur expo-screen-orientation ini menembak di momen yang sama
++// dengan native module New Arch resmi Expo — jika salah satu jalur native
++// mati di runtime, jalur satunya tetap mengunci. Di sisi Android keduanya
++// bermuara ke panggilan setRequestedOrientation yang identik, jadi tidak
++// saling merusak.
++const lockLandscapeExpo = () => {
++  ExpoScreenOrientation.lockAsync(
++    ExpoScreenOrientation.OrientationLock.LANDSCAPE,
++  ).catch(() => {});
++};
++
++const lockPortraitExpo = () => {
++  ExpoScreenOrientation.lockAsync(
++    ExpoScreenOrientation.OrientationLock.PORTRAIT_UP,
++  ).catch(() => {});
++};
++
+ const Player = ({route}: Props): React.JSX.Element => {
+   const [syncReady, setSyncReady] = useState(false);
+ 
++  // Kunci LANDSCAPE sejak commit pertama, imperatif. Kompensasi atas JS
++  // thread yang lebih sibuk daripada base (fitur sync/statistik hasil
++  // rekonstruksi); topologi base (OrientationLocker per-branch +
++  // lockToPortrait via exitFullScreen) tetap utuh.
++  useEffect(() => {
++    Orientation.lockToLandscape();
++  }, []);
++
+   useEffect(() => {
+     let mounted = true;
+-    syncFromSharedFolder()
+-      .catch(error => console.warn('[NgotakSync] Player sync failed:', error))
+-      .finally(() => {
+-        if (mounted) {
+-          setSyncReady(true);
+-        }
+-      });
++    let timer: ReturnType<typeof setTimeout> | undefined;
++    // Sync folder bersama DITUNDA sampai transisi navigasi selesai dan
++    // rotasi landscape sempat terpasang. I/O SAF (binder IPC per read,
++    // plus tulis manifest balik) di sini terbukti menyibukkan JS thread
++    // dan menunda setImmediate milik OrientationLocker — penyebab player
++    // lama berputar ke landscape. Base ValoraFilm tidak punya fitur sync
++    // ini sama sekali; fitur tetap berjalan penuh, hanya dijadwalkan ulang.
++    const interactionTask = InteractionManager.runAfterInteractions(() => {
++      timer = setTimeout(() => {
++        syncFromSharedFolder()
++          .catch(error =>
++            console.warn('[NgotakSync] Player sync failed:', error),
++          )
++          .finally(() => {
++            if (mounted) {
++              setSyncReady(true);
++            }
++          });
++      }, 600);
++    });
+     return () => {
+       mounted = false;
++      interactionTask.cancel();
++      if (timer) {
++        clearTimeout(timer);
++      }
+     };
+   }, []);
+ 
+@@ -1179,8 +1236,13 @@ const Player = ({route}: Props): React.JSX.Element => {
+     useCallback(() => {
+       // This code now runs every time the screen is focused
+       reapplyFullscreenMode(isFullScreenRef.current);
++      lockLandscapeExpo();
++      // Pause semua I/O sync (SAF) selama playback — JS thread bebas untuk
++      // rotasi & kontrol. Resume saat keluar player; sync menyusul otomatis.
++      setSyncPausedForPlayer(true);
+ 
+       return () => {
++        setSyncPausedForPlayer(false);
+         exitFullScreen();
+       };
+     }, []),
+@@ -1196,6 +1258,7 @@ const Player = ({route}: Props): React.JSX.Element => {
+       (nextAppState: AppStateStatus) => {
+         if (nextAppState === 'active') {
+           reapplyFullscreenMode(isFullScreenRef.current);
++          lockLandscapeExpo();
+         }
+       },
+     );
+@@ -1220,14 +1283,10 @@ const Player = ({route}: Props): React.JSX.Element => {
+     };
+   }, [navigation]);
+ 
+-  useEffect(
+-    () =>
+-      navigation.addListener('beforeRemove', () => {
+-        exitFullScreen();
+-        Orientation.lockToPortrait();
+-      }),
+-    [navigation],
+-  );
++  // NOTE: listener 'beforeRemove' sengaja TIDAK dipasang — base v1.0.3-fixed
++  // tidak memilikinya (terverifikasi dari decompile). Jalur keluar player
++  // dicover oleh blur-cleanup (useFocusEffect) dan BackHandler, keduanya
++  // memanggil exitFullScreen() yang memulihkan portrait.
+ 
+   // Reset track selections when stream changes
+   useEffect(() => {
+@@ -1593,6 +1652,25 @@ const Player = ({route}: Props): React.JSX.Element => {
+       <StatusBar translucent={true} hidden={true} />
+       <OrientationLocker orientation={LANDSCAPE} />
+ 
++      {/* Tanda air versi build (diagnostik orientasi) — kecil, semi-transparan,
++          tidak menerima sentuhan. Tujuan: setiap screenshot player langsung
++          terbuktikan berasal dari build yang mana. Dihapus setelah isu
++          orientasi tuntas terkonfirmasi. */}
++      <View
++        pointerEvents="none"
++        style={{
++          position: 'absolute',
++          right: 6,
++          bottom: 6,
++          zIndex: 999,
++        }}>
++        <AppText
++          style={{fontSize: 10, color: 'rgba(255,255,255,0.45)'}}
++          allowFontScaling={false}>
++          v1.0.11
++        </AppText>
++      </View>
++
+       {/* Local or Cast player */}
+       {remoteMediaClient ? (
+         <CastRemotePlayer
+diff --git a/src/components/Hero.tsx b/src/components/Hero.tsx
+index 8829841..b380c83 100644
+--- a/src/components/Hero.tsx
++++ b/src/components/Hero.tsx
+@@ -230,7 +230,9 @@ const Hero = memo(
+         ) : (
+           <View style={{height: 48, width: 48}} />
+         )}
+-        <View style={{flexDirection: 'row', alignItems: 'center', gap: 8}}>
++        {/* Grup kanan: Hentai berdampingan rapat dengan Settings — gap
++            konsisten biar spacing tetap rapi di semua state tombol. */}
++        <View style={{flexDirection: 'row', alignItems: 'center', gap: 4}}>
+           <HeroTopButton
+             icon="rabbit-variant"
+             iconImage={require('../../assets/hentai_icon.png')}
+diff --git a/src/components/navigation/StreamingTabBar.tsx b/src/components/navigation/StreamingTabBar.tsx
+index 49671a6..41ca772 100644
+--- a/src/components/navigation/StreamingTabBar.tsx
++++ b/src/components/navigation/StreamingTabBar.tsx
+@@ -32,8 +32,11 @@ const StreamingTabBar = ({
+ }: BottomTabBarProps) => {
+   const colors = useM3Colors();
+   const insets = useSafeAreaInsets();
+-  const {width: windowWidth} = useWindowDimensions();
+-  const isNavigationRail = windowWidth > 768;
++  const {width: windowWidth, height: windowHeight} = useWindowDimensions();
++  // Konvensi Android smallest-width (sw-dp) — sama dengan isLargeScreen di
++  // App.tsx: rail hanya untuk tablet. HP di landscape atau dengan dims basi
++  // (mis. setelah keluar player) tetap memakai tab bar bawah.
++  const isNavigationRail = Math.min(windowWidth, windowHeight) > 768;
+   const isPureBlack = useThemeStore(state => state.isPureBlack);
+   const showLabels = settingsStorage.showTabBarLabels();
+   const bottomBarPadding =
+diff --git a/src/screens/settings/About.tsx b/src/screens/settings/About.tsx
+index 6b88fdc..1e90a17 100644
+--- a/src/screens/settings/About.tsx
++++ b/src/screens/settings/About.tsx
+@@ -1,14 +1,18 @@
+-import React, {useState} from 'react';
++import React, {useEffect, useState} from 'react';
+ import {
++  Dimensions,
+   Image,
++  NativeModules,
+   Pressable,
+   StatusBar,
+   StyleSheet,
+   ToastAndroid,
++  useWindowDimensions,
+   View,
+ } from 'react-native';
+ import Animated, {FadeInUp} from 'react-native-reanimated';
+ import * as Application from 'expo-application';
++import * as ExpoScreenOrientation from 'expo-screen-orientation';
+ import Constants from 'expo-constants';
+ import Ionicons from '@expo/vector-icons/Ionicons';
+ import {useNavigation} from '@react-navigation/native';
+@@ -47,6 +51,35 @@ const About = () => {
+   useSafeAreaInsets();
+   const colors = useM3Colors();
+   const [logoTaps, setLogoTaps] = useState(0);
++  const windowDims = useWindowDimensions();
++  const screenDims = Dimensions.get('screen');
++
++  // Deteksi module native orientation — untuk membedah bug "player tidak
++  // landscape" langsung dari device: terlihat apakah kedua jalur native
++  // (react-native-orientation-locker & expo-screen-orientation) benar-benar
++  // terdaftar di runtime build ini.
++  const orientationLockerNative = Boolean(
++    (NativeModules as {Orientation?: unknown}).Orientation,
++  );
++  const expoOrientationNative = Boolean(ExpoScreenOrientation?.lockAsync);
++  const [nativeLockInfo, setNativeLockInfo] = useState('…');
++  useEffect(() => {
++    ExpoScreenOrientation.getOrientationAsync()
++      .then(orientation => {
++        const names: Record<number, string> = {
++          0: 'UNKNOWN',
++          1: 'PORTRAIT',
++          2: 'PORTRAIT_UPSIDE_DOWN',
++          3: 'LANDSCAPE',
++          4: 'LANDSCAPE_RIGHT',
++          5: 'LANDSCAPE_LEFT',
++        };
++        setNativeLockInfo(
++          `${names[Number(orientation)] ?? String(orientation)}`,
++        );
++      })
++      .catch(() => setNativeLockInfo('(tidak terbaca)'));
++  }, []);
+ 
+   const appVersion =
+     Application.nativeApplicationVersion ||
+@@ -143,6 +176,61 @@ const About = () => {
+             <InfoRow label="License" value="Apache-2.0" />
+           </View>
+ 
++          {/* Diagnostik layar — untuk verifikasi fix layout/orientation.
++              Nilai ini live (update saat rotate). */}
++          <View
++            style={[
++              styles.card,
++              {
++                backgroundColor: colors.surfaceContainer,
++                borderColor: `${colors.outlineVariant}60`,
++                marginTop: 16,
++              },
++            ]}>
++            <InfoRow
++              label="BUILD"
++              value={`${appVersion} (${Application.nativeBuildVersion || '?'})`}
++            />
++            <Divider />
++            <InfoRow
++              label="Module o-locker (native)"
++              value={orientationLockerNative ? 'TERDAFTAR ✓' : 'HILANG ✗'}
++            />
++            <Divider />
++            <InfoRow
++              label="Module expo-orientation"
++              value={expoOrientationNative ? 'TERDAFTAR ✓' : 'HILANG ✗'}
++            />
++            <Divider />
++            <InfoRow label="Orientasi (native)" value={nativeLockInfo} />
++            <Divider />
++            <InfoRow
++              label="Window"
++              value={`${windowDims.width} x ${windowDims.height}`}
++            />
++            <Divider />
++            <InfoRow
++              label="Screen"
++              value={`${screenDims.width} x ${screenDims.height}`}
++            />
++            <Divider />
++            <InfoRow
++              label="Orientation"
++              value={
++                windowDims.width > windowDims.height ? 'Landscape' : 'Portrait'
++              }
++            />
++            <Divider />
++            <InfoRow
++              label="Layout mode"
++              value={
++                Math.min(windowDims.width, windowDims.height) > 768
++                  ? 'Tablet (sidebar)'
++                  : 'Phone (bottom bar)'
++              }
++            />
++          </View>
++
+           <View style={{height: 40}} />
+         </Animated.ScrollView>
+       </View>
+diff --git a/jest.setup.js b/jest.setup.js
+index 0b4aa7b..740cecc 100644
+--- a/jest.setup.js
++++ b/jest.setup.js
+@@ -17,6 +17,15 @@ const NATIVE_MODULE_OVERRIDES = {
+     nativeApplicationVersion: '1.0.3',
+     nativeBuildVersion: '193',
+   },
++  ExpoScreenOrientation: {
++    lockAsync: jest.fn(() => Promise.resolve()),
++    unlockAsync: jest.fn(() => Promise.resolve()),
++    lockPlatformAsync: jest.fn(() => Promise.resolve()),
++    getOrientationAsync: jest.fn(() => Promise.resolve(1)),
++    getOrientationLockAsync: jest.fn(() => Promise.resolve(0)),
++    getPlatformOrientationLockAsync: jest.fn(() => Promise.resolve({})),
++    supportsOrientationLockAsync: jest.fn(() => Promise.resolve(true)),
++  },
+ };
+ const createNativeModuleMock = name => {
+   const target = {
+diff --git a/src/lib/sync/syncService.ts b/src/lib/sync/syncService.ts
+index 3c225a1..df4be14 100644
+--- a/src/lib/sync/syncService.ts
++++ b/src/lib/sync/syncService.ts
+@@ -40,6 +40,14 @@ let initialized = false;
+ let applyingRemoteState = false;
+ let publishTimer: ReturnType<typeof setTimeout> | undefined;
+ let syncRequest: Promise<void> | undefined;
++
++// Player aktif = pause semua I/O sync (SAF binder IPC) agar JS thread bebas
++// untuk rotasi & kontrol player. Sync tetap jalan penuh saat tidak nonton.
++let pausedForPlayer = false;
++export const setSyncPausedForPlayer = (paused: boolean): void => {
++  pausedForPlayer = paused;
++};
++export const isSyncPausedForPlayer = (): boolean => pausedForPlayer;
+ let previousDownloads: Record<string, DownloadItem> = {};
+ let previousHistory: ContinueWatchingItem[] = [];
+ let previousWatchList: WatchListItem[] = [];
+@@ -254,6 +262,11 @@ const schedulePublish = () => {
+   }
+   publishTimer = setTimeout(() => {
+     publishTimer = undefined;
++    if (pausedForPlayer) {
++      // Jangan menulis manifest saat player aktif — I/O SAF akan menyita
++      // JS thread di tengah playback. Publish berikutnya menyusul.
++      return;
++    }
+     publishSyncManifest().catch(error =>
+       console.warn('[NgotakSync] Failed to publish manifest:', error),
+     );
+@@ -411,6 +424,9 @@ const applyTombstones = (tombstones: Record<string, SyncTombstone>) => {
+ };
+ 
+ const runSharedFolderSync = async (): Promise<void> => {
++  if (pausedForPlayer) {
++    return;
++  }
+   if (publishTimer) {
+     clearTimeout(publishTimer);
+     publishTimer = undefined;
+diff --git a/src/components/SeasonList.tsx b/src/components/SeasonList.tsx
+index 3f77249..7b4a80a 100644
+--- a/src/components/SeasonList.tsx
++++ b/src/components/SeasonList.tsx
+@@ -50,6 +50,7 @@ import {LEGACY_TERTIARY_BACKGROUND} from '../theme/seeds';
+ import Text from './ui/Text';
+ import EpisodeRowContent, {getValidImageUri} from './EpisodeRowContent';
+ import {setSyncedEpisodeProgress} from '../lib/sync/syncService';
++import {openPlayer} from '../lib/player/openPlayer';
+ 
+ const CONTROL_TEXT = '#F5F0EF';
+ const CONTROL_TEXT_MUTED = '#D4CBC9';
+@@ -407,7 +408,7 @@ const SeasonList: React.FC<SeasonListProps> = ({
+         return;
+       }
+ 
+-      navigation.navigate('Player', {
++      openPlayer(navigation, {
+         linkIndex,
+         episodeList: episodeData,
+         type: playbackType,
+@@ -550,7 +551,7 @@ const SeasonList: React.FC<SeasonListProps> = ({
+         const localDownload =
+           useDownloadsStore.getState().downloads[downloadId];
+         if (localDownload?.status === 'completed') {
+-          navigation.navigate('Player', {
++          openPlayer(navigation, {
+             episodeList: [
+               {
+                 id: localDownload.id,
+@@ -708,7 +709,7 @@ const SeasonList: React.FC<SeasonListProps> = ({
+         const localDownload =
+           useDownloadsStore.getState().downloads[downloadId];
+         if (localDownload?.status === 'completed') {
+-          navigation.navigate('Player', {
++          openPlayer(navigation, {
+             episodeList: [
+               {
+                 id: localDownload.id,
+diff --git a/src/components/Touturial.tsx b/src/components/Touturial.tsx
+index 4a9d854..158eb2a 100644
+--- a/src/components/Touturial.tsx
++++ b/src/components/Touturial.tsx
+@@ -15,6 +15,7 @@ import ReactNativeHapticFeedback from 'react-native-haptic-feedback';
+ import {RootStackParamList} from '../App';
+ import {useM3Colors} from '../theme/M3PaletteContext';
+ import * as DocumentPicker from 'expo-document-picker';
++import {openPlayer} from '../lib/player/openPlayer';
+ 
+ const Tutorial = () => {
+   const navigation = useNavigation<NavigationProp<RootStackParamList>>();
+@@ -75,7 +76,7 @@ const Tutorial = () => {
+     }
+ 
+     const video = result.assets[0];
+-    navigation.navigate('Player', {
++    openPlayer(navigation, {
+       linkIndex: 0,
+       episodeList: [
+         {
+diff --git a/src/screens/adult/AdultSection.tsx b/src/screens/adult/AdultSection.tsx
+index 0e050d8..59d35f3 100644
+--- a/src/screens/adult/AdultSection.tsx
++++ b/src/screens/adult/AdultSection.tsx
+@@ -34,6 +34,7 @@ import AdultLockedPanel from './AdultLockedPanel';
+ import AdultBrowse from './AdultBrowse';
+ import AdultSearchPanel from './AdultSearchPanel';
+ import type {HomeStackParamList} from '../../App';
++import {openPlayer} from '../../lib/player/openPlayer';
+ 
+ type Props = NativeStackScreenProps<HomeStackParamList, 'AdultSection'>;
+ 
+@@ -164,7 +165,7 @@ const AdultSection = React.memo(({navigation}: Props) => {
+       const best = pickBest(streams);
+       const parent = navigation.getParent();
+       if (parent != null) {
+-        parent.navigate('Player', {
++        openPlayer(parent, {
+           linkIndex: 0,
+           episodeList: [{id: 'adult-1', title: card.title, link: best.url}],
+           directUrl: best.url,
+diff --git a/src/screens/downloads/DownloadedDetails.tsx b/src/screens/downloads/DownloadedDetails.tsx
+index 81f07af..abfec13 100644
+--- a/src/screens/downloads/DownloadedDetails.tsx
++++ b/src/screens/downloads/DownloadedDetails.tsx
+@@ -37,6 +37,7 @@ import useDownloadsStore, {
+   selectCompletedDownloads,
+ } from '../../lib/zustand/downloadsStore';
+ import {useM3Colors} from '../../theme/M3PaletteContext';
++import {openPlayer} from '../../lib/player/openPlayer';
+ 
+ type DownloadedDetailsProps = CompositeScreenProps<
+   NativeStackScreenProps<DownloadsStackParamList, 'DownloadedDetails'>,
+@@ -164,7 +165,7 @@ const DownloadedDetails = ({navigation, route}: DownloadedDetailsProps) => {
+     const playableItems = items.filter(
+       candidate => candidate.status === 'completed',
+     );
+-    navigation.navigate('Player', {
++    openPlayer(navigation, {
+       episodeList: playableItems.map(candidate => ({
+         id: candidate.id,
+         title: candidate.episodeName || candidate.title,
+diff --git a/home/user/NgotakStreamQx/src/lib/player/openPlayer.ts b/src/lib/player/openPlayer.ts
+new file mode 100644
+index 0000000..8e72395
+--- /dev/null
++++ b/src/lib/player/openPlayer.ts
+@@ -0,0 +1,24 @@
++import Orientation from 'react-native-orientation-locker';
++
++type NavigateToPlayer = {
++  navigate: (...args: any[]) => unknown;
++};
++
++/**
++ * Membuka layar Player dengan rotasi landscape yang dipicu PADA SAAT TAP —
++ * dari layar sumber yang sedang idle — sebelum layar Player di-mount.
++ *
++ * `setRequestedOrientation` dieksekusi seketika di momen tap dan tidak ikut
++ * mengantri di belakang pekerjaan JS apa pun yang terjadi saat mount Player
++ * (sync folder bersama, statistik, resolusi stream, dsb.). Layar Player
++ * mempertahankan lock melalui <OrientationLocker LANDSCAPE> pada tiap branch
++ * render dan memulihkan portrait saat keluar via exitFullScreen()
++ * (topologi base v1.0.3-fixed tetap utuh).
++ */
++export const openPlayer = (
++  navigation: NavigateToPlayer,
++  params: Record<string, unknown>,
++): void => {
++  Orientation.lockToLandscape();
++  navigation.navigate('Player', params);
++};
