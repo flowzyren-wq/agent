@@ -1,5 +1,5 @@
 diff --git a/app.config.js b/app.config.js
-index 7fbe94e..dfc998c 100644
+index 7fbe94e..3097257 100644
 --- a/app.config.js
 +++ b/app.config.js
 @@ -121,7 +121,7 @@ module.exports = () => {
@@ -7,7 +7,7 @@ index 7fbe94e..dfc998c 100644
        plugins,
        slug: 'ngotakstream-qx',
 -      version: '1.0.3',
-+      version: '1.0.7',
++      version: '1.0.8',
        userInterfaceStyle: 'dark',
        experiments: {
          reactCompiler: true,
@@ -16,12 +16,12 @@ index 7fbe94e..dfc998c 100644
          minSdkVersion: 24,
          package: PACKAGE_NAME,
 -        versionCode: 193,
-+        versionCode: 197,
++        versionCode: 198,
          permissions: [
            'FOREGROUND_SERVICE',
            'FOREGROUND_SERVICE_DATA_SYNC',
 diff --git a/android/app/build.gradle b/android/app/build.gradle
-index a36ebbb..9669ab2 100644
+index a36ebbb..2fe8024 100644
 --- a/android/app/build.gradle
 +++ b/android/app/build.gradle
 @@ -101,8 +101,8 @@ android {
@@ -30,8 +30,8 @@ index a36ebbb..9669ab2 100644
          targetSdkVersion rootProject.ext.targetSdkVersion
 -        versionCode 193
 -        versionName "1.0.3"
-+        versionCode 197
-+        versionName "1.0.7"
++        versionCode 198
++        versionName "1.0.8"
  
          buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
      }
@@ -60,30 +60,67 @@ index df2940e..1d1abf6 100644
      'You have passed a style to FlashList',
      'new NativeEventEmitter()',
 diff --git a/src/screens/home/Player.tsx b/src/screens/home/Player.tsx
-index dbfc209..5c8981d 100644
+index dbfc209..eaa256b 100644
 --- a/src/screens/home/Player.tsx
 +++ b/src/screens/home/Player.tsx
-@@ -214,6 +214,12 @@ const exitFullScreen = () => {
-     NavigationBar.setVisibilityAsync('visible');
-     StatusBar.setHidden(false, 'slide');
+@@ -208,7 +208,7 @@ const goFullScreen = () => {
    }
-+  // Pulihkan orientasi PORTRAIT saat mode fullscreen ditinggalkan —
-+  // mengikuti implementasi base v1.0.3-fixed yang terbukti berfungsi:
-+  // lockToPortrait dipanggil di exitFullScreen, sebelum goBack (BackHandler),
-+  // dan saat beforeRemove, berdampingan dengan <OrientationLocker LANDSCAPE>
-+  // yang di-render pada setiap branch tampilan player.
-+  Orientation.lockToPortrait();
  };
  
+-const exitFullScreen = () => {
++const exitImmersiveMode = () => {
+   if (Platform.OS === 'android') {
+     // Show the navigation bar
+     NavigationBar.setVisibilityAsync('visible');
+@@ -216,13 +216,29 @@ const exitFullScreen = () => {
+   }
+ };
+ 
++// Dua jalur keluar yang BERBEDA — replikasi persis topologi base v1.0.3-fixed
++// (hasil decompile):
++// 1. exitImmersiveMode: dipakai applyFullscreenMode(false) — hanya memulihkan
++//    system bars, TANPA menyentuh orientasi. State fullscreen boleh flip
++//    kapan pun selama player terbuka; orientasi TIDAK boleh ikut berubah.
++// 2. exitFullScreen: HANYA dipanggil saat screen player ditinggalkan
++//    (cleanup useFocusEffect + tombol back) — di dua titik inilah base
++//    menempatkan lockToPortrait, berdampingan dengan <OrientationLocker
++//    LANDSCAPE> yang di-render pada setiap branch tampilan player.
++// Menaruh lockToPortrait di jalur (1) membuat layar terkunci PORTRAIT
++// saat player terbuka — itulah bug v1.0.7.
++const exitFullScreen = () => {
++  exitImmersiveMode();
++  Orientation.lockToPortrait();
++};
++
  const applyFullscreenMode = (isFullScreenEnabled: boolean) => {
-@@ -1224,7 +1230,6 @@ const Player = ({route}: Props): React.JSX.Element => {
-     () =>
-       navigation.addListener('beforeRemove', () => {
-         exitFullScreen();
+   if (isFullScreenEnabled) {
+     goFullScreen();
+     return;
+   }
+ 
+-  exitFullScreen();
++  exitImmersiveMode();
+ };
+ 
+ const reapplyFullscreenMode = (isFullScreenEnabled: boolean) => {
+@@ -1220,14 +1236,9 @@ const Player = ({route}: Props): React.JSX.Element => {
+     };
+   }, [navigation]);
+ 
+-  useEffect(
+-    () =>
+-      navigation.addListener('beforeRemove', () => {
+-        exitFullScreen();
 -        Orientation.lockToPortrait();
-       }),
-     [navigation],
-   );
+-      }),
+-    [navigation],
+-  );
++  // Catatan: listener 'beforeRemove' sengaja TIDAK dipasang — base v1.0.3-fixed
++  // tidak memilikinya. Pemulihan portrait saat keluar screen sudah dicakup oleh
++  // cleanup useFocusEffect (blur) dan BackHandler di bawah.
+ 
+   // Reset track selections when stream changes
+   useEffect(() => {
 diff --git a/src/components/Hero.tsx b/src/components/Hero.tsx
 index 8829841..b380c83 100644
 --- a/src/components/Hero.tsx
