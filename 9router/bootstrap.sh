@@ -33,18 +33,18 @@ trap 'rm -f "$JAR"' EXIT
 
 jsonget() { node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{try{const j=JSON.parse(d);const v=process.argv[1].split('.').reduce((o,k)=>o?.[k],j);console.log(typeof v==='object'?JSON.stringify(v):v??'')}catch(e){console.log('')}})" "$1"; }
 
-echo "==> 1/8 Login dashboard ($BASE)"
+echo "==> 1/9 Login dashboard ($BASE)"
 LOGIN=$(curl -sf -c "$JAR" -X POST "$BASE/api/auth/login" \
   -H "Content-Type: application/json" -d "{\"password\":\"$PASSWORD\"}")
 echo "$LOGIN" | grep -q '"success":true' || { echo "Login gagal: $LOGIN"; exit 1; }
 echo "    OK (password: $PASSWORD)"
 
-echo "==> 2/8 Bikin API key"
+echo "==> 2/9 Bikin API key"
 KEY=$(curl -sf -b "$JAR" -X POST "$BASE/api/keys" \
   -H "Content-Type: application/json" -d '{"name":"bootstrap"}' | jsonget "key")
 echo "    API key: $KEY"
 
-echo "==> 3/8 Custom provider node (opsional)"
+echo "==> 3/9 Custom provider node (opsional)"
 if [[ -n "${NODE_BASEURL:-}" && -n "${NODE_PREFIX:-}" ]]; then
   NODE_ID=$(curl -sf -b "$JAR" -X POST "$BASE/api/provider-nodes" \
     -H "Content-Type: application/json" \
@@ -58,7 +58,7 @@ else
   echo "    Dilewati (set NODE_PREFIX + NODE_BASEURL kalo mau)"
 fi
 
-echo "==> 4/8 Token Harbor (kalo TH_APIKEY diset)"
+echo "==> 4/9 Token Harbor (kalo TH_APIKEY diset)"
 if [[ -n "${TH_APIKEY:-}" ]]; then
   TH_ID=$(curl -sf -b "$JAR" -X POST "$BASE/api/provider-nodes" \
     -H "Content-Type: application/json" \
@@ -86,7 +86,7 @@ else
   echo "    Dilewati (set TH_APIKEY=thk_live_... kalo mau pake Token Harbor)"
 fi
 
-echo "==> 5/8 OmegaTech gratis via free-bridge (kalo OMEGA=1)"
+echo "==> 5/9 OmegaTech gratis via free-bridge (kalo OMEGA=1)"
 if [[ "${OMEGA:-}" == "1" ]]; then
   BRIDGE_OK=$(curl -sf --max-time 3 http://127.0.0.1:9998/v1/models > /dev/null 2>&1 && echo yes || echo no)
   if [[ "$BRIDGE_OK" != "yes" ]]; then
@@ -106,7 +106,7 @@ else
   echo "    Dilewati (jalanin pake OMEGA=1 buat pake OmegaTech gratis)"
 fi
 
-echo "==> 6/8 FazzCode via free-bridge (kalo FAZZ_APIKEY diset)"
+echo "==> 6/9 FazzCode via free-bridge (kalo FAZZ_APIKEY diset)"
 if [[ -n "${FAZZ_APIKEY:-}" ]]; then
   BRIDGE2_OK=$(curl -sf --max-time 3 http://127.0.0.1:9995/v1/models > /dev/null 2>&1 && echo yes || echo no)
   if [[ "$BRIDGE2_OK" != "yes" ]]; then
@@ -138,7 +138,7 @@ else
   echo "    Dilewati (set FAZZ_APIKEY=fcs_live_... buat pake FazzCode)"
 fi
 
-echo "==> 7/8 Bikin combos"
+echo "==> 7/9 Bikin combos"
 combo() {
   curl -sf -b "$JAR" -X POST "$BASE/api/combos" \
     -H "Content-Type: application/json" -d "$1" | jsonget "name"
@@ -148,7 +148,7 @@ combo '{"name":"smart-fallback","models":["oc/union-alpha","local/demo-pro"],"ki
 combo '{"name":"cheap-rotation","models":["local/demo-fast","local/demo-pro"],"kind":"round-robin"}' || echo "    (combo 2 gagal — mungkin udah ada / model ga ada)"
 combo '{"name":"panel-fusion","models":["local/demo-fast","local/demo-pro"],"kind":"fusion"}'       || echo "    (combo 3 gagal — mungkin udah ada / model ga ada)"
 
-echo "==> 8/8 Set strategi per-combo (PENTING di v0.5.x)"
+echo "==> 8/9 Set strategi per-combo (PENTING di v0.5.x)"
 STRATEGIES='{"cheap-rotation":{"fallbackStrategy":"round-robin"},"panel-fusion":{"fallbackStrategy":"fusion","judgeModel":"local/demo-pro"},"code-team":{"fallbackStrategy":"fallback"},"code-team-pro":{"fallbackStrategy":"fallback"},"code-team-max":{"fallbackStrategy":"fallback"},"free-squad":{"fallbackStrategy":"fallback"},"code-team-live":{"fallbackStrategy":"fallback"},"code-fusion":{"fallbackStrategy":"fusion","judgeModel":"fazz/gemini"}}'
 if [[ -n "${TH_APIKEY:-}" ]]; then
   STRATEGIES=$(echo "$STRATEGIES" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const j=JSON.parse(d);j['free-auto']={fallbackStrategy:'fallback'};console.log(JSON.stringify(j))})")
@@ -157,6 +157,20 @@ curl -sf -b "$JAR" -X PATCH "$BASE/api/settings" \
   -H "Content-Type: application/json" \
   -d "{\"comboStrategies\":$STRATEGIES}" > /dev/null \
   && echo "    comboStrategies OK" || echo "    Gagal set comboStrategies"
+
+echo "==> 9/9 Fitur: observability + headroom (penghemat token)"
+curl -sf -b "$JAR" -X PATCH "$BASE/api/settings" -H "Content-Type: application/json" \
+  -d '{"enableObservability":true,"observabilityMaxRecords":2000,"requireApiKey":true,"headroomEnabled":true}' > /dev/null \
+  && echo "    Observability + requireApiKey + headroomEnabled OK" || echo "    Gagal set fitur"
+if command -v python3 > /dev/null 2>&1; then
+  HR=$(curl -sf -b "$JAR" "$BASE/api/headroom/status" 2>/dev/null | jsonget "installed")
+  if [[ "$HR" == "true" ]]; then
+    curl -sf -b "$JAR" -X POST "$BASE/api/headroom/start" > /dev/null 2>&1 && echo "    Headroom proxy di-start (:8787)" \
+      || echo "    (Headroom gagal start — cek Dashboard → Settings → Headroom)"
+  else
+    echo "    Headroom belum terpasang — pasang dulu: pip install \"headroom-ai[proxy]\""
+  fi
+fi
 
 echo
 echo "Selesai! Contoh pemakaian:"

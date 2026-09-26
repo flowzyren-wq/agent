@@ -187,7 +187,30 @@ curl -s http://localhost:20128/v1/chat/completions \
 
 ---
 
-## 2. Replikasi di Mesin Lu
+## 1e. Fitur 9Router yang Udah Diaktifkan (setup final)
+
+| Fitur | Status | Buat apa |
+|---|---|---|
+| **RTK** (token optimizer) | ✅ on (default) | optimalin pemakaian token per request |
+| **Headroom** (penghemat token) | ✅ **terpasang & jalan** — `headroom-ai 0.39.0` (pip), proxy di `:8787`, dikelola 9Router | kompresi konteks → hemat token buat sesi coding panjang |
+| **Observability** | ✅ on (2000 record) | semua request kecatat: token per model/provider, bisa dilihat di Dashboard → Usage |
+| **requireApiKey** | ✅ on | gateway `/v1/*` wajib API key (aman) |
+| **comboStrategies** | ✅ 14 combo semua ke-set | fallback/round-robin/fusion per combo |
+| **Capacity adapter (vision)** | ✅ on (default) | request ber-gambar otomatis dialihkan ke model yang bisa vision |
+
+Catatan Headroom:
+- Di sandbox: udah jalan (di-start via `POST /api/headroom/start`, status di `GET /api/headroom/status`).
+  Kalau sandbox restart, prosesnya mati — start ulang dari Dashboard → Settings → Headroom → Start.
+- Di mesin lu: `pip install "headroom-ai[proxy]"` dulu, terus Start dari dashboard (atau `curl -X POST .../api/headroom/start`).
+- `headroomCompressUserMessages` gw biarin **off** — kalau on bisa lebih hemat lagi tapi ada risiko
+  prompt lu diubah/kompres. Buat benerin APK (butuh detail presisi), mending off.
+
+Fitur lain yang tersedia (belum perlu sekarang): **CLI Tools** (auto-config 25+ tool coding: opencode,
+cline, codex, dll), **MCP marketplace**, **pricing/cost tracking**, **proxy pools**, **tunnel**
+Cloudflare/Tailscale (akses remote), **quota tracker** (buat provider OAuth).
+
+---
+
 
 ```bash
 npm install -g 9router
