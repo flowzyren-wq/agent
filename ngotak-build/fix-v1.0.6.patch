@@ -1,5 +1,5 @@
 diff --git a/android/app/build.gradle b/android/app/build.gradle
-index a36ebbb..7372717 100644
+index a36ebbb..071b100 100644
 --- a/android/app/build.gradle
 +++ b/android/app/build.gradle
 @@ -101,8 +101,8 @@ android {
@@ -8,13 +8,13 @@ index a36ebbb..7372717 100644
          targetSdkVersion rootProject.ext.targetSdkVersion
 -        versionCode 193
 -        versionName "1.0.3"
-+        versionCode 195
-+        versionName "1.0.5"
++        versionCode 196
++        versionName "1.0.6"
  
          buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
      }
 diff --git a/app.config.js b/app.config.js
-index 7fbe94e..1f57086 100644
+index 7fbe94e..e321509 100644
 --- a/app.config.js
 +++ b/app.config.js
 @@ -121,7 +121,7 @@ module.exports = () => {
@@ -22,7 +22,7 @@ index 7fbe94e..1f57086 100644
        plugins,
        slug: 'ngotakstream-qx',
 -      version: '1.0.3',
-+      version: '1.0.5',
++      version: '1.0.6',
        userInterfaceStyle: 'dark',
        experiments: {
          reactCompiler: true,
@@ -31,7 +31,7 @@ index 7fbe94e..1f57086 100644
          minSdkVersion: 24,
          package: PACKAGE_NAME,
 -        versionCode: 193,
-+        versionCode: 195,
++        versionCode: 196,
          permissions: [
            'FOREGROUND_SERVICE',
            'FOREGROUND_SERVICE_DATA_SYNC',
@@ -77,10 +77,18 @@ index 722aede..890ae87 100644
      "expo-system-ui": "~57.0.2",
      "nativewind": "^4.2.1",
 diff --git a/src/App.tsx b/src/App.tsx
-index df2940e..b941afd 100644
+index df2940e..67be4a8 100644
 --- a/src/App.tsx
 +++ b/src/App.tsx
-@@ -192,8 +192,14 @@ const App = () => {
+@@ -32,6 +32,7 @@ import Preferences from './screens/settings/Preference';
+ import Appearance from './screens/settings/Appearance';
+ import {M3ThemeProvider} from './theme/M3ThemeProvider';
+ import {AppState, LogBox, useWindowDimensions} from 'react-native';
++import * as ExpoScreenOrientation from 'expo-screen-orientation';
+ import {EpisodeLink} from './lib/providers/types';
+ import {
+   SafeAreaProvider,
+@@ -192,9 +193,32 @@ const App = () => {
      'BebasNeue': require('../assets/fonts/BebasNeue.ttf'),
    });
    const provider = useContentStore(state => state.provider);
@@ -94,9 +102,27 @@ index df2940e..b941afd 100644
 +  // lagi memunculkan sidebar desktop di HP. Tablet tetap ke-detect benar
 +  // di kedua orientasi.
 +  const isLargeScreen = Math.min(windowWidth, windowHeight) > 768;
++  const isPhone = !isLargeScreen;
    const useLinoteeFont = useThemeStore(state => state.useLinoteeFont);
++
++  // Kunci orientasi PORTRAIT untuk seluruh app di HP (di luar Player).
++  // Player mempunyai lock LANDSCAPE-nya sendiri saat aktif dan mengembalikan
++  // PORTRAIT saat ditutup. Dengan kunci level-app ini, window HP di luar
++  // player tidak pernah landscape — jadi state lebar basi (stale) sekalipun
++  // tidak bisa memunculkan layout desktop/sidebar. Tablet (sw > 768) tetap
++  // bebas berotasi. Lock bersifat sticky di sisi native (setRequestedOrientation)
++  // dan tidak saling menimpa dengan lock Player.
++  useEffect(() => {
++    if (!isPhone) {
++      return;
++    }
++    ExpoScreenOrientation.lockAsync(
++      ExpoScreenOrientation.OrientationLock.PORTRAIT_UP,
++    ).catch(() => {});
++  }, [isPhone]);
    LogBox.ignoreLogs([
      'You have passed a style to FlashList',
+     'new NativeEventEmitter()',
 diff --git a/src/components/Hero.tsx b/src/components/Hero.tsx
 index 8829841..b380c83 100644
 --- a/src/components/Hero.tsx
@@ -247,3 +273,74 @@ index dbfc209..da3049a 100644
  
        {/* Local or Cast player */}
        {remoteMediaClient ? (
+diff --git a/src/screens/settings/About.tsx b/src/screens/settings/About.tsx
+index 6b88fdc..4d1392b 100644
+--- a/src/screens/settings/About.tsx
++++ b/src/screens/settings/About.tsx
+@@ -1,10 +1,12 @@
+ import React, {useState} from 'react';
+ import {
++  Dimensions,
+   Image,
+   Pressable,
+   StatusBar,
+   StyleSheet,
+   ToastAndroid,
++  useWindowDimensions,
+   View,
+ } from 'react-native';
+ import Animated, {FadeInUp} from 'react-native-reanimated';
+@@ -47,6 +49,8 @@ const About = () => {
+   useSafeAreaInsets();
+   const colors = useM3Colors();
+   const [logoTaps, setLogoTaps] = useState(0);
++  const windowDims = useWindowDimensions();
++  const screenDims = Dimensions.get('screen');
+ 
+   const appVersion =
+     Application.nativeApplicationVersion ||
+@@ -143,6 +147,44 @@ const About = () => {
+             <InfoRow label="License" value="Apache-2.0" />
+           </View>
+ 
++          {/* Diagnostik layar — untuk verifikasi fix layout/orientation.
++              Nilai ini live (update saat rotate). */}
++          <View
++            style={[
++              styles.card,
++              {
++                backgroundColor: colors.surfaceContainer,
++                borderColor: `${colors.outlineVariant}60`,
++                marginTop: 16,
++              },
++            ]}>
++            <InfoRow
++              label="Window"
++              value={`${windowDims.width} x ${windowDims.height}`}
++            />
++            <Divider />
++            <InfoRow
++              label="Screen"
++              value={`${screenDims.width} x ${screenDims.height}`}
++            />
++            <Divider />
++            <InfoRow
++              label="Orientation"
++              value={
++                windowDims.width > windowDims.height ? 'Landscape' : 'Portrait'
++              }
++            />
++            <Divider />
++            <InfoRow
++              label="Layout mode"
++              value={
++                Math.min(windowDims.width, windowDims.height) > 768
++                  ? 'Tablet (sidebar)'
++                  : 'Phone (bottom bar)'
++              }
++            />
++          </View>
++
+           <View style={{height: 40}} />
+         </Animated.ScrollView>
+       </View>
