@@ -12,6 +12,11 @@
 #   → bikin node 'th' (OpenAI format) + 'tha' (format Claude),
 #     daftarin model free, dan combo 'free-auto'
 #
+# FazzCode (https://api.fazzcode.eu.cc) — 233+ endpoint, ada AI router:
+#   FAZZ_APIKEY="fcs_live_xxx" ./bootstrap.sh
+#   → bikin node 'fazz' (via free-bridge profile fazz, port 9995)
+#     + combo code-team-pro / code-team-max / free-squad
+#
 # Opsional — provider OpenAI-compatible lain:
 #   NODE_NAME="Provider Gw" NODE_PREFIX="gw" \
 #   NODE_BASEURL="https://api.contoh.com/v1" NODE_APIKEY="sk-..." \
@@ -28,18 +33,18 @@ trap 'rm -f "$JAR"' EXIT
 
 jsonget() { node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{try{const j=JSON.parse(d);const v=process.argv[1].split('.').reduce((o,k)=>o?.[k],j);console.log(typeof v==='object'?JSON.stringify(v):v??'')}catch(e){console.log('')}})" "$1"; }
 
-echo "==> 1/7 Login dashboard ($BASE)"
+echo "==> 1/8 Login dashboard ($BASE)"
 LOGIN=$(curl -sf -c "$JAR" -X POST "$BASE/api/auth/login" \
   -H "Content-Type: application/json" -d "{\"password\":\"$PASSWORD\"}")
 echo "$LOGIN" | grep -q '"success":true' || { echo "Login gagal: $LOGIN"; exit 1; }
 echo "    OK (password: $PASSWORD)"
 
-echo "==> 2/7 Bikin API key"
+echo "==> 2/8 Bikin API key"
 KEY=$(curl -sf -b "$JAR" -X POST "$BASE/api/keys" \
   -H "Content-Type: application/json" -d '{"name":"bootstrap"}' | jsonget "key")
 echo "    API key: $KEY"
 
-echo "==> 3/7 Custom provider node (opsional)"
+echo "==> 3/8 Custom provider node (opsional)"
 if [[ -n "${NODE_BASEURL:-}" && -n "${NODE_PREFIX:-}" ]]; then
   NODE_ID=$(curl -sf -b "$JAR" -X POST "$BASE/api/provider-nodes" \
     -H "Content-Type: application/json" \
@@ -53,7 +58,7 @@ else
   echo "    Dilewati (set NODE_PREFIX + NODE_BASEURL kalo mau)"
 fi
 
-echo "==> 4/7 Token Harbor (kalo TH_APIKEY diset)"
+echo "==> 4/8 Token Harbor (kalo TH_APIKEY diset)"
 if [[ -n "${TH_APIKEY:-}" ]]; then
   TH_ID=$(curl -sf -b "$JAR" -X POST "$BASE/api/provider-nodes" \
     -H "Content-Type: application/json" \
@@ -81,11 +86,11 @@ else
   echo "    Dilewati (set TH_APIKEY=thk_live_... kalo mau pake Token Harbor)"
 fi
 
-echo "==> 5/7 OmegaTech gratis via omega-bridge (kalo OMEGA=1)"
+echo "==> 5/8 OmegaTech gratis via free-bridge (kalo OMEGA=1)"
 if [[ "${OMEGA:-}" == "1" ]]; then
   BRIDGE_OK=$(curl -sf --max-time 3 http://127.0.0.1:9998/v1/models > /dev/null 2>&1 && echo yes || echo no)
   if [[ "$BRIDGE_OK" != "yes" ]]; then
-    nohup node "$(dirname "$0")/omega-bridge/server.js" > /tmp/omega-bridge.log 2>&1 &
+    PROFILE=omega PORT=9998 nohup node "$(dirname "$0")/omega-bridge/server.js" > /tmp/omega-bridge.log 2>&1 &
     sleep 1.5
   fi
   OMEGA_ID=$(curl -sf -b "$JAR" -X POST "$BASE/api/provider-nodes" \
@@ -101,7 +106,33 @@ else
   echo "    Dilewati (jalanin pake OMEGA=1 buat pake OmegaTech gratis)"
 fi
 
-echo "==> 6/7 Bikin combos"
+echo "==> 6/8 FazzCode via free-bridge (kalo FAZZ_APIKEY diset)"
+if [[ -n "${FAZZ_APIKEY:-}" ]]; then
+  BRIDGE2_OK=$(curl -sf --max-time 3 http://127.0.0.1:9995/v1/models > /dev/null 2>&1 && echo yes || echo no)
+  if [[ "$BRIDGE2_OK" != "yes" ]]; then
+    PROFILE=fazz PORT=9995 FAZZ_APIKEY="$FAZZ_APIKEY" nohup node "$(dirname "$0")/omega-bridge/server.js" > /tmp/fazz-bridge.log 2>&1 &
+    sleep 1.5
+  fi
+  FZ_ID=$(curl -sf -b "$JAR" -X POST "$BASE/api/provider-nodes" \
+    -H "Content-Type: application/json" \
+    -d '{"name":"FazzCode","prefix":"fazz","type":"openai-compatible","apiType":"chat","baseUrl":"http://127.0.0.1:9995/v1"}' | jsonget "node.id")
+  curl -sf -b "$JAR" -X POST "$BASE/api/providers" -H "Content-Type: application/json" \
+    -d "{\"provider\":\"$FZ_ID\",\"apiKey\":\"$FAZZ_APIKEY\",\"name\":\"FazzCode Conn\",\"priority\":1}" > /dev/null
+  curl -sf -b "$JAR" -X POST "$BASE/api/combos" -H "Content-Type: application/json" \
+    -d '{"name":"code-team-pro","models":["fazz/claude-sonnet-5","omega/blackbox","omega/llama"],"kind":"fallback"}' > /dev/null \
+    || echo "    (combo code-team-pro mungkin udah ada — butuh OMEGA=1 juga buat omega/*)"
+  curl -sf -b "$JAR" -X POST "$BASE/api/combos" -H "Content-Type: application/json" \
+    -d '{"name":"code-team-max","models":["fazz/claude-opus-4.8","fazz/claude-sonnet-4.6","fazz/gpt-5"],"kind":"fallback"}' > /dev/null \
+    || echo "    (combo code-team-max mungkin udah ada)"
+  curl -sf -b "$JAR" -X POST "$BASE/api/combos" -H "Content-Type: application/json" \
+    -d '{"name":"free-squad","models":["fazz/gemini","th/mimo-v2.6-flash:free","omega/llama"],"kind":"fallback"}' > /dev/null \
+    || echo "    (combo free-squad mungkin udah ada)"
+  echo "    Node fazz/ (16 model) + combo code-team-pro/max + free-squad OK (bridge di :9995)"
+else
+  echo "    Dilewati (set FAZZ_APIKEY=fcs_live_... buat pake FazzCode)"
+fi
+
+echo "==> 7/8 Bikin combos"
 combo() {
   curl -sf -b "$JAR" -X POST "$BASE/api/combos" \
     -H "Content-Type: application/json" -d "$1" | jsonget "name"
@@ -111,8 +142,8 @@ combo '{"name":"smart-fallback","models":["oc/union-alpha","local/demo-pro"],"ki
 combo '{"name":"cheap-rotation","models":["local/demo-fast","local/demo-pro"],"kind":"round-robin"}' || echo "    (combo 2 gagal — mungkin udah ada / model ga ada)"
 combo '{"name":"panel-fusion","models":["local/demo-fast","local/demo-pro"],"kind":"fusion"}'       || echo "    (combo 3 gagal — mungkin udah ada / model ga ada)"
 
-echo "==> 7/7 Set strategi per-combo (PENTING di v0.5.x)"
-STRATEGIES='{"cheap-rotation":{"fallbackStrategy":"round-robin"},"panel-fusion":{"fallbackStrategy":"fusion","judgeModel":"local/demo-pro"},"code-team":{"fallbackStrategy":"fallback"}}'
+echo "==> 8/8 Set strategi per-combo (PENTING di v0.5.x)"
+STRATEGIES='{"cheap-rotation":{"fallbackStrategy":"round-robin"},"panel-fusion":{"fallbackStrategy":"fusion","judgeModel":"local/demo-pro"},"code-team":{"fallbackStrategy":"fallback"},"code-team-pro":{"fallbackStrategy":"fallback"},"code-team-max":{"fallbackStrategy":"fallback"},"free-squad":{"fallbackStrategy":"fallback"}}'
 if [[ -n "${TH_APIKEY:-}" ]]; then
   STRATEGIES=$(echo "$STRATEGIES" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const j=JSON.parse(d);j['free-auto']={fallbackStrategy:'fallback'};console.log(JSON.stringify(j))})")
 fi

@@ -1,25 +1,32 @@
 // ============================================================
-// omega-bridge — jembatan OpenAI-compatible ↔ OmegaTech API
-// (https://omegatech-api.dixonomega.tech, tanpa API key)
+// free-bridge — jembatan OpenAI-compatible ↔ API gratis custom
 //
-// Naruh model-model OmegaTech (Blackbox, Llama, Qwen, dll) di
-// balik endpoint /v1/chat/completions standar OpenAI, biar bisa
-// didaftarin ke 9Router sebagai provider biasa.
+// Dua profile (pilih via env PROFILE):
+//   omega → https://omegatech-api.dixonomega.tech (tanpa key)
+//   fazz  → https://api.fazzcode.eu.cc   (key via FAZZ_APIKEY,
+//           dikirim sebagai Authorization: Bearer)
 //
 // Pemakaian:
-//   node server.js                        # OMEGA_BASE default = produksi
-//   OMEGA_BASE=http://127.0.0.1:9997 node server.js   # tes lokal
-//   PORT=9998 node server.js
+//   PROFILE=omega PORT=9998 node server.js
+//   PROFILE=fazz  PORT=9995 FAZZ_APIKEY=fcs_live_xxx node server.js
+//
+// Tes lokal (lawan fake):
+//   PROFILE=fazz PORT=9995 F AZZ_BASE... → pakai FAZZ_BASE=http://127.0.0.1:9997
+//   PROFILE=omega OMEGA_BASE=http://127.0.0.1:9997
 // ============================================================
 const http = require('http');
 const https = require('https');
 
 const PORT = parseInt(process.env.PORT || '9998', 10);
-const OMEGA_BASE = (process.env.OMEGA_BASE || 'https://omegatech-api.dixonomega.tech').replace(/\/$/, '');
+const PROFILE = process.env.PROFILE || 'omega';
 
-// ---- pemetaan model bridge -> endpoint OmegaTech ----
-// e   = endpoint path, p = param pesan, extra = param tambahan
-const MODELS = {
+const BASES = {
+  omega: (process.env.OMEGA_BASE || 'https://omegatech-api.dixonomega.tech').replace(/\/$/, ''),
+  fazz: (process.env.FAZZ_BASE || 'https://api.fazzcode.eu.cc').replace(/\/$/, ''),
+};
+
+// ---- model-model OmegaTech (profile: omega) ----
+const OMEGA_MODELS = {
   'blackbox':        { e: '/api/ai/Blackbox', p: 'prompt', label: 'Blackbox AI (80+ model, paling bagus buat coding)' },
   'fable-5':         { e: '/api/ai/Blackbox', p: 'prompt', extra: { model: 'fable-5' }, label: 'Fable 5 via Blackbox' },
   'llama':           { e: '/api/ai/chatday',  p: 'message', extra: { model: 'meta/llama-4-maverick' }, label: 'Llama 4 Maverick (Meta)' },
@@ -37,8 +44,33 @@ const MODELS = {
   'qwen':            { e: '/api/ai/Qwen',     p: 'message', label: 'Qwen (Omegatech)' },
 };
 
+// ---- model-model FazzCode (profile: fazz) ----
+// Router (/router/*) lagi di-lock otomatis pihak FazzCode pas dicek —
+// didaftar tetap, biar langsung kepake pas mereka benerin.
+const FAZZ_MODELS = {
+  'gemini':            { e: '/gemini', p: 'prompt', label: 'Gemini (FazzCode) — LIVE ✅' },
+  'claude-sonnet-5':   { e: '/claude-sonnet-5', p: 'prompt', label: 'Claude Sonnet-5 (upstream banned pas dicek 26 Sep)' },
+  'turboseek':         { e: '/turboseek', p: 'question', label: 'TurboSeek (search QA)' },
+  'claude-opus-4.8':   { e: '/router/claude-opus-4.8', p: 'prompt', label: 'Claude Opus 4.8 (router)' },
+  'claude-sonnet-4.6': { e: '/router/claude-sonnet-4.6', p: 'prompt', label: 'Claude Sonnet 4.6 (router)' },
+  'gpt-5':             { e: '/router/gpt-5', p: 'prompt', label: 'GPT-5 (router)' },
+  'gpt-5-mini':        { e: '/router/gpt-5-mini', p: 'prompt', label: 'GPT-5 Mini (router)' },
+  'gemini-3-pro':      { e: '/router/gemini-3-pro', p: 'prompt', label: 'Gemini 3 Pro (router)' },
+  'grok-4':            { e: '/router/grok-4', p: 'prompt', label: 'Grok 4 (router)' },
+  'kimi-k2.6':         { e: '/router/kimi-k2.6', p: 'prompt', label: 'Kimi K2.6 (router)' },
+  'qwen3-max':         { e: '/router/qwen3-max', p: 'prompt', label: 'Qwen 3 Max (router)' },
+  'deepseek-v4-flash': { e: '/router/deepseek-v4-flash', p: 'prompt', label: 'DeepSeek V4 Flash (router)' },
+  'glm-5.3-flash-free':{ e: '/router/glm-5.3-flash-free', p: 'prompt', label: 'GLM 5.3 Flash Free (router)' },
+  'tencent-hy3-free':  { e: '/router/tencent-hy3-free', p: 'prompt', label: 'Tencent HY3 Free (router)' },
+  'nemotron-3-ultra':  { e: '/router/nemotron-3-ultra', p: 'prompt', label: 'Nemotron 3 Ultra (router)' },
+  'mistral-large-3':   { e: '/router/mistral-large-3', p: 'prompt', label: 'Mistral Large 3 (router)' },
+};
+
+const MODELS = PROFILE === 'fazz' ? FAZZ_MODELS : OMEGA_MODELS;
+const BASE = BASES[PROFILE];
+
 // ---- util: messages[] -> satu string prompt ----
-function messagesToPrompt(messages, maxLen = 1500) {
+function messagesToPrompt(messages, maxLen = 4000) {
   if (!Array.isArray(messages) || !messages.length) return '';
   const parts = messages.map((m) => {
     const role = m.role || 'user';
@@ -54,49 +86,59 @@ function messagesToPrompt(messages, maxLen = 1500) {
   return prompt;
 }
 
-// ---- util: ekstrak reply dari berbagai bentuk respons OmegaTech ----
+// ---- util: ekstrak reply dari berbagai bentuk respons ----
 function extractReply(j) {
   let r =
     j?.data?.reply ?? j?.reply ?? j?.data?.result ?? j?.result ??
+    j?.data?.response ?? j?.response ?? j?.result?.response ??
     j?.data?.message ?? j?.data?.text ?? j?.message ?? null;
   if (typeof r === 'string' && r.includes('data:')) {
-    // respons SSE mentah (mis. chatday): kumpulkan semua "delta":"..."
     const deltas = [...r.matchAll(/"delta"\s*:\s*"((?:[^"\\]|\\.)*)"/g)]
       .map((m) => { try { return JSON.parse('"' + m[1] + '"'); } catch { return m[1]; } });
     if (deltas.length) r = deltas.join('');
   }
-  if (r && typeof r === 'object') r = JSON.stringify(r);
+  if (r && typeof r === 'object') {
+    // bentuk FazzCode: { result: { response: "..." } }
+    if (typeof r.response === 'string') r = r.response;
+    else r = JSON.stringify(r);
+  }
   return typeof r === 'string' && r.trim() ? r : null;
 }
 
-function callOmega(modelId, prompt) {
+function callUpstream(modelId, prompt) {
   const spec = MODELS[modelId];
   const qs = new URLSearchParams({ action: 'chat', [spec.p]: prompt, ...(spec.extra || {}) });
-  const url = `${OMEGA_BASE}${spec.e}?${qs.toString()}`;
+  // FazzCode: action ga dipakai — buang biar URL bersih
+  if (PROFILE === 'fazz') qs.delete('action');
+  const url = `${BASE}${spec.e}?${qs.toString()}`;
+  const headers = { 'User-Agent': 'free-bridge/1.0' };
+  if (PROFILE === 'fazz' && process.env.FAZZ_APIKEY) {
+    headers['Authorization'] = `Bearer ${process.env.FAZZ_APIKEY}`;
+  }
   return new Promise((resolve, reject) => {
     const lib = url.startsWith('https:') ? https : http;
-    const req = lib.request(url, { timeout: 120000, headers: { 'User-Agent': 'omega-bridge/1.0' } }, (res) => {
+    const req = lib.request(url, { timeout: 120000, headers }, (res) => {
       let body = '';
       res.on('data', (c) => (body += c));
       res.on('end', () => {
         if (res.statusCode !== 200) {
-          return reject(new Error(`OmegaTech HTTP ${res.statusCode}: ${body.slice(0, 300)}`));
+          return reject(new Error(`upstream HTTP ${res.statusCode}: ${body.slice(0, 300)}`));
         }
         try {
           const j = JSON.parse(body);
-          if (j.success === false) {
-            return reject(new Error(`OmegaTech error: ${j.error || 'unknown'} (status ${j.statusCode || '?'})`));
+          if (j.success === false || j.status === 'error') {
+            return reject(new Error(`upstream: ${j.message || j.error || 'unknown error'}${j.code ? ` (code ${j.code})` : ''}`));
           }
           const reply = extractReply(j);
-          if (!reply) return reject(new Error('OmegaTech balas tanpa isi (reply kosong)'));
-          resolve({ reply, sessionId: j.sessionId || j.data?.conversationId || null });
+          if (!reply) return reject(new Error('upstream balas tanpa isi (reply kosong)'));
+          resolve({ reply, sessionId: j.sessionId || j.data?.conversationId || j.result?.session_id || null });
         } catch (err) {
-          reject(new Error(`Gagal parse respons OmegaTech: ${body.slice(0, 200)}`));
+          reject(new Error(`Gagal parse respons upstream: ${body.slice(0, 200)}`));
         }
       });
     });
-    req.on('timeout', () => { req.destroy(); reject(new Error('Timeout 120s ke OmegaTech')); });
-    req.on('error', (err) => reject(new Error(`Koneksi ke OmegaTech gagal: ${err.message}`)));
+    req.on('timeout', () => { req.destroy(); reject(new Error('Timeout 120s ke upstream')); });
+    req.on('error', (err) => reject(new Error(`Koneksi ke upstream gagal: ${err.message}`)));
     req.end();
   });
 }
@@ -107,7 +149,7 @@ const server = http.createServer((req, res) => {
   if (req.method === 'GET' && req.url.startsWith('/v1/models')) {
     return json(200, {
       object: 'list',
-      data: Object.entries(MODELS).map(([id, m]) => ({ id, object: 'model', owned_by: 'omegatech', label: m.label })),
+      data: Object.entries(MODELS).map(([id, m]) => ({ id, object: 'model', owned_by: PROFILE, label: m.label })),
     });
   }
 
@@ -117,21 +159,21 @@ const server = http.createServer((req, res) => {
     return req.on('end', async () => {
       let j = {};
       try { j = JSON.parse(body); } catch {}
-      const modelId = j.model || 'blackbox';
-      if (!MODELS[modelId]) return json(404, { error: { message: `Model '${modelId}' ga ada di omega-bridge. Liat /v1/models.`, type: 'invalid_request_error', code: 'model_not_found' } });
+      const modelId = j.model || Object.keys(MODELS)[0];
+      if (!MODELS[modelId]) return json(404, { error: { message: `Model '${modelId}' ga ada di bridge (profile: ${PROFILE}). Liat /v1/models.`, type: 'invalid_request_error', code: 'model_not_found' } });
       const prompt = messagesToPrompt(j.messages);
       if (!prompt) return json(400, { error: { message: 'messages kosong', type: 'invalid_request_error' } });
 
-      console.log(`[omega-bridge] ${new Date().toISOString()} model=${modelId} prompt=${prompt.slice(0, 80).replace(/\n/g, ' ')}...`);
+      console.log(`[free-bridge:${PROFILE}] ${new Date().toISOString()} model=${modelId} prompt=${prompt.slice(0, 80).replace(/\n/g, ' ')}...`);
       try {
-        const { reply, sessionId } = await callOmega(modelId, prompt);
-        const id = 'chatcmpl-omega-' + Date.now();
+        const { reply, sessionId } = await callUpstream(modelId, prompt);
+        const id = 'chatcmpl-bridge-' + Date.now();
         if (!j.stream) {
           return json(200, {
             id, object: 'chat.completion', created: Math.floor(Date.now() / 1000), model: modelId,
             choices: [{ index: 0, message: { role: 'assistant', content: reply }, finish_reason: 'stop' }],
             usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
-            ...(sessionId ? { omega_session_id: sessionId } : {}),
+            ...(sessionId ? { bridge_session_id: sessionId } : {}),
           });
         }
         res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
@@ -143,8 +185,8 @@ const server = http.createServer((req, res) => {
         res.write('data: [DONE]\n\n');
         return res.end();
       } catch (err) {
-        console.error(`[omega-bridge] GAGAL model=${modelId}: ${err.message}`);
-        return json(502, { error: { message: `[omega-bridge/${modelId}] ${err.message}`, type: 'server_error', code: 'bad_gateway' } });
+        console.error(`[free-bridge:${PROFILE}] GAGAL model=${modelId}: ${err.message}`);
+        return json(502, { error: { message: `[free-bridge:${PROFILE}/${modelId}] ${err.message}`, type: 'server_error', code: 'bad_gateway' } });
       }
     });
   }
@@ -152,4 +194,4 @@ const server = http.createServer((req, res) => {
   json(404, { error: { message: 'not found — pake /v1/models atau /v1/chat/completions' } });
 });
 
-server.listen(PORT, '0.0.0.0', () => console.log(`omega-bridge jalan di 0.0.0.0:${PORT} → ${OMEGA_BASE}`));
+server.listen(PORT, '0.0.0.0', () => console.log(`free-bridge (${PROFILE}) jalan di 0.0.0.0:${PORT} → ${BASE}`));

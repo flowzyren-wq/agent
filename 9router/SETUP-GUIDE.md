@@ -39,6 +39,9 @@
 | `free-auto` | 3 model free Token Harbor | fallback | ✅ routing & fallback ke-test |
 | `code-team` ⭐ | blackbox → llama → qwencoder | fallback | ✅ fallback ke-test (blackbox lagi down) |
 | `free-mega` | omega/llama → th/mimo → omega/qwen | fallback | ✅ cross-provider |
+| `code-team-pro` ⭐ | fazz/sonnet-5 → omega/blackbox → omega/llama | fallback | ✅ routing ke-test |
+| `code-team-max` | fazz/opus-4.8 → fazz/sonnet-4.6 → fazz/gpt-5 | fallback | ✅ (nunggu router fazz kebuka) |
+| `free-squad` | fazz/gemini → th/mimo free → omega/llama | fallback | ✅ semua model live |
 
 ⚠️ **Jebakan v0.5.x:** kolom `kind` di combo doang ga cukup — strategi harus diset juga di
 `Settings → comboStrategies`. `bootstrap.sh` udah ngurusin ini.
@@ -128,6 +131,45 @@ OMEGA=1 bash 9router/bootstrap.sh         # daftar node omega/ + combo code-team
 
 ---
 
+## 1d. FazzCode (https://api.fazzcode.eu.cc) — Udah Ke-daftar ✅
+
+Platform API buatan Indonesia (233+ endpoint). Key lu udah gw daftarin, bridge profile `fazz`
+jalan di port 9995 (skrip sama: `omega-bridge/server.js`, `PROFILE=fazz`). Prefix: **`fazz/`**.
+
+**Status endpoint pas dicek (26 Sep 2026):**
+
+| Endpoint | Status |
+|---|---|
+| `fazz/gemini` | ✅ **LIVE** — dites pake key lu, bales beneran |
+| `fazz/claude-sonnet-5` | ❌ akun upstream Claude mereka kena **banned** (error `account_banned` dari sisi Anthropic) |
+| `fazz/*` router (13 model: opus-4.8, gpt-5, grok-4, kimi, dll) | ⏳ lagi **di-lock otomatis** pihak FazzCode ("sedang diperbaiki" — cek /status mereka) |
+
+Model `fazz/` yang ke-daftar di 9Router (16): `gemini`, `claude-sonnet-5`, `turboseek`,
+`claude-opus-4.8`, `claude-sonnet-4.6`, `gpt-5`, `gpt-5-mini`, `gemini-3-pro`, `grok-4`,
+`kimi-k2.6`, `qwen3-max`, `deepseek-v4-flash`, `glm-5.3-flash-free`, `tencent-hy3-free`,
+`nemotron-3-ultra`, `mistral-large-3`.
+
+**Combos baru (bareng FazzCode):**
+
+- **`code-team-pro`** ⭐ — `fazz/claude-sonnet-5` → `omega/blackbox` → `omega/llama`.
+  Chain coding cross-provider terkuat: kalau FazzCode bermasalah, otomatis mendarat ke OmegaTech.
+- **`code-team-max`** — `fazz/claude-opus-4.8` → `fazz/claude-sonnet-4.6` → `fazz/gpt-5`.
+  Semua model premium FazzCode berantai (bakal idup kalau router mereka kebuka).
+- **`free-squad`** — `fazz/gemini` → `th/mimo-v2.6-flash:free` → `omega/llama`.
+  Gabungan semua model free yang **lagi live** dari 3 provider.
+
+> 🔐 **Keamanan:** sama kayak Token Harbor — key `fcs_live_...` lu ada di chat & sqlite sandbox.
+> Rotasi kalau perlu. Di repo cuma lewat env var `FAZZ_APIKEY`.
+
+### Cara jalanin di mesin lu
+
+```bash
+PROFILE=fazz PORT=9995 FAZZ_APIKEY=fcs_live_xxx node 9router/omega-bridge/server.js &
+FAZZ_APIKEY=fcs_live_xxx bash 9router/bootstrap.sh   # daftar node fazz/ + 3 combo baru
+```
+
+---
+
 ### Tes Cepet
 
 ```bash
@@ -192,9 +234,13 @@ jalan beneran karena ga ada firewall ngeblok. Abis itu kita ngoding bareng pake 
 
 | Model / combo | Buat apa |
 |---|---|
-| `code-team` ⭐ | combo coding: blackbox → llama → qwencoder (fallback otomatis) |
+| `code-team-pro` ⭐ | combo coding terkuat: fazz/sonnet-5 → omega/blackbox → omega/llama |
+| `code-team-max` | combo premium FazzCode: opus-4.8 → sonnet-4.6 → gpt-5 |
+| `free-squad` | semua model free yang lagi live (fazz/gemini → th/mimo → omega/llama) |
+| `code-team` | combo coding OmegaTech: blackbox → llama → qwencoder |
 | `omega/blackbox` | "model paling bagus buat coding" versi lu |
 | `omega/fable-5` | Fable 5 via Blackbox |
+| `fazz/gemini` | Gemini via FazzCode (live) |
 | `omega/llama`, `omega/gpt-5.6`, `omega/claude-sonnet-5` | model modern gratis |
 | `free-auto` / `free-mega` | combo fallback model free Token Harbor / campuran |
 | `th/mimo-v2.6-flash:free` | model free Token Harbor |
