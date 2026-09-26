@@ -1,0 +1,16 @@
+{
+  "name": "opencode-desktop-mobile",
+  "version": "1.0.0",
+  "description": "Make original OpenCode Desktop usable on Android and iOS - preserves original UI, adds mobile compatibility layer",
+  "type": "module",
+  "scripts": {
+    "dev": "node src/server/index.js",
+    "start": "node src/server/index.js",
+    "test:mobile": "node scripts/test-mobile.js",
+    "audit": "cat docs/AUDIT.md"
+  },
+  "keywords": ["opencode", "desktop", "mobile", "android", "ios", "pwa"],
+  "license": "MIT",
+  "dependencies": {},
+  "devDependencies": {}
+}
