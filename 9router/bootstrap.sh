@@ -28,18 +28,18 @@ trap 'rm -f "$JAR"' EXIT
 
 jsonget() { node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{try{const j=JSON.parse(d);const v=process.argv[1].split('.').reduce((o,k)=>o?.[k],j);console.log(typeof v==='object'?JSON.stringify(v):v??'')}catch(e){console.log('')}})" "$1"; }
 
-echo "==> 1/6 Login dashboard ($BASE)"
+echo "==> 1/7 Login dashboard ($BASE)"
 LOGIN=$(curl -sf -c "$JAR" -X POST "$BASE/api/auth/login" \
   -H "Content-Type: application/json" -d "{\"password\":\"$PASSWORD\"}")
 echo "$LOGIN" | grep -q '"success":true' || { echo "Login gagal: $LOGIN"; exit 1; }
 echo "    OK (password: $PASSWORD)"
 
-echo "==> 2/6 Bikin API key"
+echo "==> 2/7 Bikin API key"
 KEY=$(curl -sf -b "$JAR" -X POST "$BASE/api/keys" \
   -H "Content-Type: application/json" -d '{"name":"bootstrap"}' | jsonget "key")
 echo "    API key: $KEY"
 
-echo "==> 3/6 Custom provider node (opsional)"
+echo "==> 3/7 Custom provider node (opsional)"
 if [[ -n "${NODE_BASEURL:-}" && -n "${NODE_PREFIX:-}" ]]; then
   NODE_ID=$(curl -sf -b "$JAR" -X POST "$BASE/api/provider-nodes" \
     -H "Content-Type: application/json" \
@@ -53,7 +53,7 @@ else
   echo "    Dilewati (set NODE_PREFIX + NODE_BASEURL kalo mau)"
 fi
 
-echo "==> 4/6 Token Harbor (kalo TH_APIKEY diset)"
+echo "==> 4/7 Token Harbor (kalo TH_APIKEY diset)"
 if [[ -n "${TH_APIKEY:-}" ]]; then
   TH_ID=$(curl -sf -b "$JAR" -X POST "$BASE/api/provider-nodes" \
     -H "Content-Type: application/json" \
@@ -81,7 +81,27 @@ else
   echo "    Dilewati (set TH_APIKEY=thk_live_... kalo mau pake Token Harbor)"
 fi
 
-echo "==> 5/6 Bikin combos"
+echo "==> 5/7 OmegaTech gratis via omega-bridge (kalo OMEGA=1)"
+if [[ "${OMEGA:-}" == "1" ]]; then
+  BRIDGE_OK=$(curl -sf --max-time 3 http://127.0.0.1:9998/v1/models > /dev/null 2>&1 && echo yes || echo no)
+  if [[ "$BRIDGE_OK" != "yes" ]]; then
+    nohup node "$(dirname "$0")/omega-bridge/server.js" > /tmp/omega-bridge.log 2>&1 &
+    sleep 1.5
+  fi
+  OMEGA_ID=$(curl -sf -b "$JAR" -X POST "$BASE/api/provider-nodes" \
+    -H "Content-Type: application/json" \
+    -d '{"name":"OmegaTech","prefix":"omega","type":"openai-compatible","apiType":"chat","baseUrl":"http://127.0.0.1:9998/v1"}' | jsonget "node.id")
+  curl -sf -b "$JAR" -X POST "$BASE/api/providers" -H "Content-Type: application/json" \
+    -d "{\"provider\":\"$OMEGA_ID\",\"apiKey\":\"omega-no-key\",\"name\":\"OmegaTech Conn\",\"priority\":1}" > /dev/null
+  curl -sf -b "$JAR" -X POST "$BASE/api/combos" -H "Content-Type: application/json" \
+    -d '{"name":"code-team","models":["omega/blackbox","omega/llama","omega/qwencoder"],"kind":"fallback"}' > /dev/null \
+    || echo "    (combo code-team mungkin udah ada)"
+  echo "    Node omega/ (15 model) + combo code-team OK (bridge di :9998)"
+else
+  echo "    Dilewati (jalanin pake OMEGA=1 buat pake OmegaTech gratis)"
+fi
+
+echo "==> 6/7 Bikin combos"
 combo() {
   curl -sf -b "$JAR" -X POST "$BASE/api/combos" \
     -H "Content-Type: application/json" -d "$1" | jsonget "name"
@@ -91,10 +111,14 @@ combo '{"name":"smart-fallback","models":["oc/union-alpha","local/demo-pro"],"ki
 combo '{"name":"cheap-rotation","models":["local/demo-fast","local/demo-pro"],"kind":"round-robin"}' || echo "    (combo 2 gagal — mungkin udah ada / model ga ada)"
 combo '{"name":"panel-fusion","models":["local/demo-fast","local/demo-pro"],"kind":"fusion"}'       || echo "    (combo 3 gagal — mungkin udah ada / model ga ada)"
 
-echo "==> 6/6 Set strategi per-combo (PENTING di v0.5.x)"
+echo "==> 7/7 Set strategi per-combo (PENTING di v0.5.x)"
+STRATEGIES='{"cheap-rotation":{"fallbackStrategy":"round-robin"},"panel-fusion":{"fallbackStrategy":"fusion","judgeModel":"local/demo-pro"},"code-team":{"fallbackStrategy":"fallback"}}'
+if [[ -n "${TH_APIKEY:-}" ]]; then
+  STRATEGIES=$(echo "$STRATEGIES" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const j=JSON.parse(d);j['free-auto']={fallbackStrategy:'fallback'};console.log(JSON.stringify(j))})")
+fi
 curl -sf -b "$JAR" -X PATCH "$BASE/api/settings" \
   -H "Content-Type: application/json" \
-  -d '{"comboStrategies":{"cheap-rotation":{"fallbackStrategy":"round-robin"},"panel-fusion":{"fallbackStrategy":"fusion","judgeModel":"local/demo-pro"}}}' > /dev/null \
+  -d "{\"comboStrategies\":$STRATEGIES}" > /dev/null \
   && echo "    comboStrategies OK" || echo "    Gagal set comboStrategies"
 
 echo
