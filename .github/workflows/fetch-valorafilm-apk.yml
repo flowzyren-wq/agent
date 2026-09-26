@@ -1,0 +1,38 @@
+name: Fetch ValoraFilm base APK (v1.0.3-fixed)
+
+# Ambil asset APK dari release v1.0.3-fixed dan push ke branch
+# valorafilm-base-apk (sandbox tidak bisa download asset release langsung).
+
+on:
+  push:
+    branches:
+      - arena/01a0dd37-agent
+    paths:
+      - '.github/workflows/fetch-valorafilm-apk.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Download release asset & push ke branch
+        run: |
+          set -eux
+          mkdir apk && cd apk
+          curl -fL --retry 3 -o ValoraFilm-fixed-v1.0.3.apk \
+            "https://github.com/flowzyren-wq/agent/releases/download/v1.0.3-fixed/ValoraFilm-fixed-v1.0.3.apk"
+          ls -la
+          sha256sum ValoraFilm-fixed-v1.0.3.apk
+          git init -b valorafilm-base-apk
+          git config user.name arena-agent
+          git config user.email agent@arena.ai
+          git add ValoraFilm-fixed-v1.0.3.apk
+          git commit -m "base APK v1.0.3-fixed (ValoraFilm) — SHA256: $(sha256sum ValoraFilm-fixed-v1.0.3.apk | cut -d' ' -f1)"
+          git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push -f origin valorafilm-base-apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
