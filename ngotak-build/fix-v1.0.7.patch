@@ -1,0 +1,190 @@
+diff --git a/app.config.js b/app.config.js
+index 7fbe94e..dfc998c 100644
+--- a/app.config.js
++++ b/app.config.js
+@@ -121,7 +121,7 @@ module.exports = () => {
+       autolinking: {exclude: ['expo-splash-screen']},
+       plugins,
+       slug: 'ngotakstream-qx',
+-      version: '1.0.3',
++      version: '1.0.7',
+       userInterfaceStyle: 'dark',
+       experiments: {
+         reactCompiler: true,
+@@ -132,7 +132,7 @@ module.exports = () => {
+           : {}),
+         minSdkVersion: 24,
+         package: PACKAGE_NAME,
+-        versionCode: 193,
++        versionCode: 197,
+         permissions: [
+           'FOREGROUND_SERVICE',
+           'FOREGROUND_SERVICE_DATA_SYNC',
+diff --git a/android/app/build.gradle b/android/app/build.gradle
+index a36ebbb..9669ab2 100644
+--- a/android/app/build.gradle
++++ b/android/app/build.gradle
+@@ -101,8 +101,8 @@ android {
+         applicationId 'id.qxshaa.ngotakstreamqx'
+         minSdkVersion rootProject.ext.minSdkVersion
+         targetSdkVersion rootProject.ext.targetSdkVersion
+-        versionCode 193
+-        versionName "1.0.3"
++        versionCode 197
++        versionName "1.0.7"
+ 
+         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
+     }
+diff --git a/src/App.tsx b/src/App.tsx
+index df2940e..1d1abf6 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -192,9 +192,17 @@ const App = () => {
+     'BebasNeue': require('../assets/fonts/BebasNeue.ttf'),
+   });
+   const provider = useContentStore(state => state.provider);
+-  const {width: windowWidth} = useWindowDimensions();
+-  const isLargeScreen = windowWidth > 768;
++  const {width: windowWidth, height: windowHeight} = useWindowDimensions();
++  // Breakpoint mengikuti konvensi Android smallest-width (sw-dp): pakai
++  // dimensi TERKECIL window, bukan lebar mentah. Dengan begitu HP di
++  // landscape (lebar ~800dp+) tidak salah dianggap layar besar, dan state
++  // lebar basi (stale) setelah siklus fullscreen/orientation player tidak
++  // lagi memunculkan sidebar desktop di HP. Tablet tetap ke-detect benar
++  // di kedua orientasi.
++  const isLargeScreen = Math.min(windowWidth, windowHeight) > 768;
++  const isPhone = !isLargeScreen;
+   const useLinoteeFont = useThemeStore(state => state.useLinoteeFont);
++
+   LogBox.ignoreLogs([
+     'You have passed a style to FlashList',
+     'new NativeEventEmitter()',
+diff --git a/src/screens/home/Player.tsx b/src/screens/home/Player.tsx
+index dbfc209..5c8981d 100644
+--- a/src/screens/home/Player.tsx
++++ b/src/screens/home/Player.tsx
+@@ -214,6 +214,12 @@ const exitFullScreen = () => {
+     NavigationBar.setVisibilityAsync('visible');
+     StatusBar.setHidden(false, 'slide');
+   }
++  // Pulihkan orientasi PORTRAIT saat mode fullscreen ditinggalkan —
++  // mengikuti implementasi base v1.0.3-fixed yang terbukti berfungsi:
++  // lockToPortrait dipanggil di exitFullScreen, sebelum goBack (BackHandler),
++  // dan saat beforeRemove, berdampingan dengan <OrientationLocker LANDSCAPE>
++  // yang di-render pada setiap branch tampilan player.
++  Orientation.lockToPortrait();
+ };
+ 
+ const applyFullscreenMode = (isFullScreenEnabled: boolean) => {
+@@ -1224,7 +1230,6 @@ const Player = ({route}: Props): React.JSX.Element => {
+     () =>
+       navigation.addListener('beforeRemove', () => {
+         exitFullScreen();
+-        Orientation.lockToPortrait();
+       }),
+     [navigation],
+   );
+diff --git a/src/components/Hero.tsx b/src/components/Hero.tsx
+index 8829841..b380c83 100644
+--- a/src/components/Hero.tsx
++++ b/src/components/Hero.tsx
+@@ -230,7 +230,9 @@ const Hero = memo(
+         ) : (
+           <View style={{height: 48, width: 48}} />
+         )}
+-        <View style={{flexDirection: 'row', alignItems: 'center', gap: 8}}>
++        {/* Grup kanan: Hentai berdampingan rapat dengan Settings — gap
++            konsisten biar spacing tetap rapi di semua state tombol. */}
++        <View style={{flexDirection: 'row', alignItems: 'center', gap: 4}}>
+           <HeroTopButton
+             icon="rabbit-variant"
+             iconImage={require('../../assets/hentai_icon.png')}
+diff --git a/src/components/navigation/StreamingTabBar.tsx b/src/components/navigation/StreamingTabBar.tsx
+index 49671a6..41ca772 100644
+--- a/src/components/navigation/StreamingTabBar.tsx
++++ b/src/components/navigation/StreamingTabBar.tsx
+@@ -32,8 +32,11 @@ const StreamingTabBar = ({
+ }: BottomTabBarProps) => {
+   const colors = useM3Colors();
+   const insets = useSafeAreaInsets();
+-  const {width: windowWidth} = useWindowDimensions();
+-  const isNavigationRail = windowWidth > 768;
++  const {width: windowWidth, height: windowHeight} = useWindowDimensions();
++  // Konvensi Android smallest-width (sw-dp) — sama dengan isLargeScreen di
++  // App.tsx: rail hanya untuk tablet. HP di landscape atau dengan dims basi
++  // (mis. setelah keluar player) tetap memakai tab bar bawah.
++  const isNavigationRail = Math.min(windowWidth, windowHeight) > 768;
+   const isPureBlack = useThemeStore(state => state.isPureBlack);
+   const showLabels = settingsStorage.showTabBarLabels();
+   const bottomBarPadding =
+diff --git a/src/screens/settings/About.tsx b/src/screens/settings/About.tsx
+index 6b88fdc..4d1392b 100644
+--- a/src/screens/settings/About.tsx
++++ b/src/screens/settings/About.tsx
+@@ -1,10 +1,12 @@
+ import React, {useState} from 'react';
+ import {
++  Dimensions,
+   Image,
+   Pressable,
+   StatusBar,
+   StyleSheet,
+   ToastAndroid,
++  useWindowDimensions,
+   View,
+ } from 'react-native';
+ import Animated, {FadeInUp} from 'react-native-reanimated';
+@@ -47,6 +49,8 @@ const About = () => {
+   useSafeAreaInsets();
+   const colors = useM3Colors();
+   const [logoTaps, setLogoTaps] = useState(0);
++  const windowDims = useWindowDimensions();
++  const screenDims = Dimensions.get('screen');
+ 
+   const appVersion =
+     Application.nativeApplicationVersion ||
+@@ -143,6 +147,44 @@ const About = () => {
+             <InfoRow label="License" value="Apache-2.0" />
+           </View>
+ 
++          {/* Diagnostik layar — untuk verifikasi fix layout/orientation.
++              Nilai ini live (update saat rotate). */}
++          <View
++            style={[
++              styles.card,
++              {
++                backgroundColor: colors.surfaceContainer,
++                borderColor: `${colors.outlineVariant}60`,
++                marginTop: 16,
++              },
++            ]}>
++            <InfoRow
++              label="Window"
++              value={`${windowDims.width} x ${windowDims.height}`}
++            />
++            <Divider />
++            <InfoRow
++              label="Screen"
++              value={`${screenDims.width} x ${screenDims.height}`}
++            />
++            <Divider />
++            <InfoRow
++              label="Orientation"
++              value={
++                windowDims.width > windowDims.height ? 'Landscape' : 'Portrait'
++              }
++            />
++            <Divider />
++            <InfoRow
++              label="Layout mode"
++              value={
++                Math.min(windowDims.width, windowDims.height) > 768
++                  ? 'Tablet (sidebar)'
++                  : 'Phone (bottom bar)'
++              }
++            />
++          </View>
++
+           <View style={{height: 40}} />
+         </Animated.ScrollView>
+       </View>
