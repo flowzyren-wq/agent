@@ -127,7 +127,13 @@ if [[ -n "${FAZZ_APIKEY:-}" ]]; then
   curl -sf -b "$JAR" -X POST "$BASE/api/combos" -H "Content-Type: application/json" \
     -d '{"name":"free-squad","models":["fazz/gemini","th/mimo-v2.6-flash:free","omega/llama"],"kind":"fallback"}' > /dev/null \
     || echo "    (combo free-squad mungkin udah ada)"
-  echo "    Node fazz/ (16 model) + combo code-team-pro/max + free-squad OK (bridge di :9995)"
+  curl -sf -b "$JAR" -X POST "$BASE/api/combos" -H "Content-Type: application/json" \
+    -d '{"name":"code-team-live","models":["omega/gpt-5.6","omega/claude-sonnet-5","omega/llama","fazz/gemini"],"kind":"fallback"}' > /dev/null \
+    || echo "    (combo code-team-live mungkin udah ada)"
+  curl -sf -b "$JAR" -X POST "$BASE/api/combos" -H "Content-Type: application/json" \
+    -d '{"name":"code-fusion","models":["omega/gpt-5.6","omega/llama"],"kind":"fusion"}' > /dev/null \
+    || echo "    (combo code-fusion mungkin udah ada)"
+  echo "    Node fazz/ (16 model) + combo code-team-pro/max, free-squad, code-team-live, code-fusion OK (bridge di :9995)"
 else
   echo "    Dilewati (set FAZZ_APIKEY=fcs_live_... buat pake FazzCode)"
 fi
@@ -143,7 +149,7 @@ combo '{"name":"cheap-rotation","models":["local/demo-fast","local/demo-pro"],"k
 combo '{"name":"panel-fusion","models":["local/demo-fast","local/demo-pro"],"kind":"fusion"}'       || echo "    (combo 3 gagal — mungkin udah ada / model ga ada)"
 
 echo "==> 8/8 Set strategi per-combo (PENTING di v0.5.x)"
-STRATEGIES='{"cheap-rotation":{"fallbackStrategy":"round-robin"},"panel-fusion":{"fallbackStrategy":"fusion","judgeModel":"local/demo-pro"},"code-team":{"fallbackStrategy":"fallback"},"code-team-pro":{"fallbackStrategy":"fallback"},"code-team-max":{"fallbackStrategy":"fallback"},"free-squad":{"fallbackStrategy":"fallback"}}'
+STRATEGIES='{"cheap-rotation":{"fallbackStrategy":"round-robin"},"panel-fusion":{"fallbackStrategy":"fusion","judgeModel":"local/demo-pro"},"code-team":{"fallbackStrategy":"fallback"},"code-team-pro":{"fallbackStrategy":"fallback"},"code-team-max":{"fallbackStrategy":"fallback"},"free-squad":{"fallbackStrategy":"fallback"},"code-team-live":{"fallbackStrategy":"fallback"},"code-fusion":{"fallbackStrategy":"fusion","judgeModel":"fazz/gemini"}}'
 if [[ -n "${TH_APIKEY:-}" ]]; then
   STRATEGIES=$(echo "$STRATEGIES" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const j=JSON.parse(d);j['free-auto']={fallbackStrategy:'fallback'};console.log(JSON.stringify(j))})")
 fi

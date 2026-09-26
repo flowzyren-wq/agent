@@ -42,6 +42,8 @@
 | `code-team-pro` ⭐ | fazz/sonnet-5 → omega/blackbox → omega/llama | fallback | ✅ routing ke-test |
 | `code-team-max` | fazz/opus-4.8 → fazz/sonnet-4.6 → fazz/gpt-5 | fallback | ✅ (nunggu router fazz kebuka) |
 | `free-squad` | fazz/gemini → th/mimo free → omega/llama | fallback | ✅ semua model live |
+| `code-team-live` | omega/gpt-5.6 → omega/sonnet-5 → omega/llama → fazz/gemini | fallback | ✅ 4 model terbukti live |
+| `code-fusion` | omega/gpt-5.6 + omega/llama (judge: fazz/gemini) | fusion | ✅ panel paralel + judge |
 
 ⚠️ **Jebakan v0.5.x:** kolom `kind` di combo doang ga cukup — strategi harus diset juga di
 `Settings → comboStrategies`. `bootstrap.sh` udah ngurusin ini.
@@ -157,6 +159,10 @@ Model `fazz/` yang ke-daftar di 9Router (16): `gemini`, `claude-sonnet-5`, `turb
   Semua model premium FazzCode berantai (bakal idup kalau router mereka kebuka).
 - **`free-squad`** — `fazz/gemini` → `th/mimo-v2.6-flash:free` → `omega/llama`.
   Gabungan semua model free yang **lagi live** dari 3 provider.
+- **`code-team-live`** — `omega/gpt-5.6` → `omega/claude-sonnet-5` → `omega/llama` → `fazz/gemini`.
+  Empat model coding yang udah **terbukti live & lolos tes coding** (palindrome 4/4, fibonacci 11/11).
+- **`code-fusion`** — panel paralel `omega/gpt-5.6` + `omega/llama`, jawaban disintesis judge `fazz/gemini`.
+  Buat tugas sulit: dua model jawab barengan, Gemini yang milih & gabungin yang terbaik.
 
 > 🔐 **Keamanan:** sama kayak Token Harbor — key `fcs_live_...` lu ada di chat & sqlite sandbox.
 > Rotasi kalau perlu. Di repo cuma lewat env var `FAZZ_APIKEY`.
