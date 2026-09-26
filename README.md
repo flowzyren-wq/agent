@@ -68,7 +68,35 @@ Audit lengkap di [docs/AUDIT.md](docs/AUDIT.md). Ringkasan:
     └── test-mobile.js     # Android/iOS verification
 ```
 
-## 🚀 Cara Pakai
+## 📱 Phone Only? Gak Punya Laptop? Bisa!
+
+**Lu cuma punya HP tapi mau pakai OpenCode Desktop asli? Bisa 100% HP only:**
+
+- **Android:** HP jadi server + client via Termux → [Baca docs/PHONE_ONLY.md](docs/PHONE_ONLY.md) atau buka `/phone-only` di gateway
+- **iOS:** Backend di cloud gratis (Railway/Codespaces), frontend di Safari HP → sama, baca `/phone-only`
+
+Intinya: Android 100% HP only tanpa laptop/cloud, iOS HP only via cloud gratis. UI tetap desktop asli.
+
+### Opsi Cepat Phone Only
+
+**Android Termux (HP jadi server):**
+```bash
+pkg install nodejs git curl
+curl -fsSL https://opencode.ai/install | bash
+git clone https://github.com/flowzyren-wq/agent.git opencode-mobile
+cd opencode-mobile
+# Terminal 1: opencode serve --hostname 0.0.0.0 --port 4096
+# Terminal 2: npm start
+# Buka di Chrome HP: http://localhost:3000
+```
+
+**iOS via Cloud:**
+- Deploy repo ini ke Railway/Fly.io (Dockerfile udah ada) → dapet URL → buka di Safari iPhone
+- Atau GitHub Codespaces: buka sst/opencode > Code > Codespaces > `opencode serve --hostname 0.0.0.0 --port 4096` > Open Port 4096
+
+Detail lengkap: [docs/PHONE_ONLY.md](docs/PHONE_ONLY.md) dan `/phone-only` page.
+
+## 🚀 Cara Pakai (Mode Normal - Butuh Laptop + HP)
 
 ### 1. Jalankan OpenCode Server (asli)
 

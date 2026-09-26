@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content, viewport-fit=cover">
+<title>Phone Only - OpenCode Desktop</title>
+<meta name="theme-color" content="#191515">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="manifest" href="/manifest.json">
+<link rel="stylesheet" href="/mobile/styles.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#fafafa;color:#191515;line-height:1.6}
+.container{max-width:800px;margin:0 auto;padding:20px;padding-top:calc(20px + env(safe-area-inset-top));padding-bottom:calc(20px + env(safe-area-inset-bottom))}
+h1{font-size:28px;letter-spacing:-0.02em;margin-bottom:8px}
+h2{font-size:18px;margin:24px 0 12px}
+h3{font-size:15px;margin:16px 0 8px}
+p{font-size:14px;opacity:0.8;margin-bottom:12px}
+.card{background:white;border:1px solid #e5e5e5;border-radius:16px;padding:20px;margin:16px 0}
+.code{background:#191515;color:#f5f5f5;padding:12px 16px;border-radius:12px;font-family:monospace;font-size:13px;overflow-x:auto;white-space:pre-wrap;word-break:break-all;margin:12px 0}
+.btn{display:inline-block;padding:10px 18px;border-radius:10px;text-decoration:none;font-size:13px;font-weight:600;margin:6px 6px 6px 0}
+.btn.primary{background:#191515;color:white}
+.btn.secondary{background:white;color:#191515;border:1px solid #e5e5e5}
+.badge{display:inline-block;font-size:11px;font-weight:700;padding:3px 8px;border-radius:20px;margin-bottom:8px}
+.badge.android{background:#f0fdf4;color:#166534;border:1px solid #bbf7d0}
+.badge.ios{background:#eff6ff;color:#1e40af;border:1px solid #bfdbfe}
+.badge.ok{background:#191515;color:white}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+.step{display:flex;gap:12px;margin:12px 0}
+.step-num{width:28px;height:28px;border-radius:50%;background:#191515;color:white;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>📱 Phone Only Mode</h1>
+<p><strong>Gak punya laptop? Cuma modal HP tapi mau pakai OpenCode Desktop asli?</strong> Bisa banget. Ini caranya.</p>
+
+<div class="card" style="background:#fffbeb;border-color:#fde68a">
+<strong>💡 Konsep:</strong> OpenCode itu 2 bagian: Backend Server (4096) + Frontend UI. Di HP, backend bisa jalan di HP itu sendiri (Android) atau di cloud gratis (iOS). Frontend tetap di browser HP, UI tetap asli 100%.
+</div>
+
+<div class="grid">
+<div class="card">
+<span class="badge android">ANDROID - 100% HP ONLY</span>
+<h2>🤖 Android via Termux</h2>
+<p>Android bisa jadi server + client sekaligus. HP lu jadi laptop.</p>
+
+<div class="step"><div class="step-num">1</div><div><strong>Install Termux</strong><br><span style="font-size:13px;opacity:0.7">Download dari F-Droid (jangan Play Store):<br><a href="https://f-droid.org/en/packages/com.termux/" target="_blank">f-droid.org/en/packages/com.termux</a></span></div></div>
+
+<div class="step"><div class="step-num">2</div><div><strong>Setup 1 klik</strong><br>
+<div class="code">pkg update -y && pkg install -y nodejs git curl
+curl -fsSL https://opencode.ai/install | bash
+git clone https://github.com/flowzyren-wq/agent.git opencode-mobile
+cd opencode-mobile
+</div>
+Atau download script:<br>
+<a class="btn secondary" href="/scripts/android-termux-setup.sh" target="_blank">📥 Download Setup Script</a>
+</div></div>
+
+<div class="step"><div class="step-num">3</div><div><strong>Jalanin 2 terminal</strong><br>
+<div class="code">Terminal 1:
+opencode serve --hostname 0.0.0.0 --port 4096
+
+Terminal 2 (New Session di Termux):
+cd opencode-mobile && npm start
+</div>
+</div></div>
+
+<div class="step"><div class="step-num">4</div><div><strong>Buka di Chrome HP</strong><br>
+<div class="code">http://localhost:3000  (dengan mobile bridge)
+http://localhost:4096  (langsung)
+</div>
+Add to Home Screen biar jadi app!
+</div></div>
+
+</div>
+
+<div class="card">
+<span class="badge ios">iOS - HP ONLY VIA CLOUD</span>
+<h2>🍎 iPhone / iPad via Cloud Gratis</h2>
+<p>iOS gak bisa jalanin binary, jadi backend di cloud, frontend di HP.</p>
+
+<h3>Opsi 1: Railway (Gratis, 1 Klik)</h3>
+<div class="step"><div class="step-num">1</div><div>Buka <a href="https://railway.app/new" target="_blank">railway.app/new</a> di Safari iPhone</div></div>
+<div class="step"><div class="step-num">2</div><div>Connect repo ini, deploy (Dockerfile udah ada)</div></div>
+<div class="step"><div class="step-num">3</div><div>Dapet URL misal <code>opencode-xxx.up.railway.app</code> → buka di Safari → UI asli muncul!</div></div>
+
+<h3>Opsi 2: GitHub Codespaces (60 jam gratis/bulan)</h3>
+<div class="step"><div class="step-num">1</div><div>Buka github.com/sst/opencode di Safari</div></div>
+<div class="step"><div class="step-num">2</div><div>Code > Codespaces > Create Codespace</div></div>
+<div class="step"><div class="step-num">3</div><div>Di terminal Codespace: <code>opencode serve --hostname 0.0.0.0 --port 4096</code></div></div>
+<div class="step"><div class="step-num">4</div><div>Klik popup Port 4096 forwarded > Open in Browser</div></div>
+
+<h3>Opsi 3: Fly.io / Render</h3>
+<p style="font-size:13px">Repo ini udah ada Dockerfile, bisa deploy ke Fly.io / Render gratis tier juga.</p>
+
+</div>
+</div>
+
+<div class="card">
+<h2>🎯 Kenapa Tetap UI Asli?</h2>
+<div class="grid">
+<div>
+<strong>Yang dipertahankan:</strong>
+<ul style="font-size:13px;margin:8px 0 0 16px;opacity:0.8">
+<li>Layout 3-column desktop</li>
+<li>Sidebar, file tree, session</li>
+<li>Editor contenteditable asli</li>
+<li>Terminal ghostty-web WASM asli</li>
+<li>Chat, model selection, command palette</li>
+<li>Semua fitur, bukan tiruan</li>
+</ul>
+</div>
+<div>
+<strong>Yang ditambah (tanpa ubah UI):</strong>
+<ul style="font-size:13px;margin:8px 0 0 16px;opacity:0.8">
+<li>Touch scrolling momentum</li>
+<li>Long-press context menu</li>
+<li>Swipe edge buat sidebar</li>
+<li>Floating toolbar trigger action asli</li>
+<li>Keyboard handling biar gak ketutup</li>
+<li>Safe-area notch iPhone</li>
+</ul>
+</div>
+</div>
+</div>
+
+<div class="card">
+<h2>📲 Cara Pakai di HP (Setelah Jalan)</h2>
+<p><span class="badge ok">TOUCH</span> Scroll di sidebar / chat / terminal pake jari (momentum)</p>
+<p><span class="badge ok">SWIPE</span> Swipe dari tepi kiri buat buka sidebar</p>
+<p><span class="badge ok">LONG-PRESS</span> Long-press 500ms di file buat context menu</p>
+<p><span class="badge ok">TOOLBAR</span> Tap tepi bawah buat munculin toolbar: Sidebar, Command Palette (Ctrl+K asli), Terminal (Ctrl+` asli), Esc/Tab/Ctrl</p>
+<p><span class="badge ok">KEYBOARD</span> Tap editor → keyboard muncul, prompt tetap visible (gak ketutup)</p>
+</div>
+
+<div class="card" style="text-align:center">
+<h2>Siap Coding Cuma Modal HP?</h2>
+<p>Android 100% HP only via Termux. iOS via cloud gratis. Keduanya UI tetap Desktop asli.</p>
+<a class="btn primary" href="/">← Balik ke Gateway</a>
+<a class="btn secondary" href="/test">🧪 Test Mobile</a>
+<a class="btn secondary" href="https://github.com/sst/opencode" target="_blank">Original Repo</a>
+</div>
+
+</div>
+
+<script type="module">
+import '/mobile/bridge.js';
+</script>
+</body>
+</html>

@@ -375,6 +375,30 @@ const server = http.createServer(async (req, res) => {
     return serveTestPage(res);
   }
 
+  // Phone-only page
+  if (pathname === '/phone-only' || pathname === '/hp-only' || pathname === '/android' || pathname === '/ios') {
+    const phonePath = path.join(PUBLIC_DIR, 'phone-only.html');
+    if (fs.existsSync(phonePath)) {
+      return serveFile(res, phonePath);
+    }
+  }
+
+  // Scripts
+  if (pathname.startsWith('/scripts/')) {
+    const scriptPath = path.join(ROOT, pathname);
+    if (fs.existsSync(scriptPath)) {
+      return serveFile(res, scriptPath);
+    }
+  }
+
+  // Docs
+  if (pathname.startsWith('/docs/')) {
+    const docPath = path.join(ROOT, pathname);
+    if (fs.existsSync(docPath)) {
+      return serveFile(res, docPath);
+    }
+  }
+
   // Health check
   if (pathname === '/health' || pathname === '/api/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
