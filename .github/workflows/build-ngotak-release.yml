@@ -22,15 +22,15 @@ jobs:
 
     steps:
       - name: Checkout repo agent (berisi patch)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Setup JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: '17'
@@ -38,15 +38,29 @@ jobs:
       - name: Accept Android SDK licenses
         run: yes | sdkmanager --licenses > /dev/null || true
 
-      - name: Clone NgotakStreamQx + apply fix
+      - name: Clone NgotakStreamQx
         run: |
+          set -x
           git clone --depth 1 https://github.com/flowzyren-wq/NgotakStreamQx.git app
+          ls -la app | head -5
+
+      - name: Apply fix patch
+        run: |
+          set -x
           cd app
-          git apply --check ../ngotak-build/fix-v1.0.4.patch
+          git apply --check -v ../ngotak-build/fix-v1.0.4.patch
           git apply ../ngotak-build/fix-v1.0.4.patch
+          git status --short
+
+      - name: Commit patched source
+        run: |
+          set -x
+          cd app
           git config user.name arena-agent
           git config user.email agent@arena.ai
+          git add -A
           git commit -m "fix: player orientation lifecycle + sw-dp breakpoint (patch v1.0.4)"
+          git log --oneline -2
 
       - name: npm ci
         working-directory: app
