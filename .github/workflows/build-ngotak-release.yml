@@ -2,7 +2,7 @@ name: Build NgotakStreamQx Release APK
 
 # Build release APK untuk repo eksternal flowzyren-wq/NgotakStreamQx
 # (repo itu tidak bisa di-push dari sini, jadi fix dikirim sebagai patch).
-# Hasil APK di-push ke branch ngotak-apk-v1.0.4 di repo ini.
+# Hasil APK di-push ke branch ngotak-apk-v1.0.5 di repo ini.
 
 on:
   push:
@@ -48,8 +48,8 @@ jobs:
         run: |
           set -x
           cd app
-          git apply --check -v ../ngotak-build/fix-v1.0.4.patch
-          git apply ../ngotak-build/fix-v1.0.4.patch
+          git apply --check -v ../ngotak-build/fix-v1.0.5.patch
+          git apply ../ngotak-build/fix-v1.0.5.patch
           git status --short
 
       - name: Commit patched source
@@ -111,13 +111,13 @@ jobs:
       - name: Push APK ke branch
         run: |
           cd apk
-          git init -b ngotak-apk-v1.0.4
+          git init -b ngotak-apk-v1.0.5
           git config user.name arena-agent
           git config user.email agent@arena.ai
           git add *.apk
           git commit -m "Release APK v1.0.4 — fix orientation player + layout mobile"
           git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          git push -f origin ngotak-apk-v1.0.4
+          git push -f origin ngotak-apk-v1.0.5
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

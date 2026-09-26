@@ -1,5 +1,5 @@
 diff --git a/android/app/build.gradle b/android/app/build.gradle
-index a36ebbb..df8044d 100644
+index a36ebbb..7372717 100644
 --- a/android/app/build.gradle
 +++ b/android/app/build.gradle
 @@ -101,8 +101,8 @@ android {
@@ -8,13 +8,13 @@ index a36ebbb..df8044d 100644
          targetSdkVersion rootProject.ext.targetSdkVersion
 -        versionCode 193
 -        versionName "1.0.3"
-+        versionCode 194
-+        versionName "1.0.4"
++        versionCode 195
++        versionName "1.0.5"
  
          buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
      }
 diff --git a/app.config.js b/app.config.js
-index 7fbe94e..5665fc2 100644
+index 7fbe94e..1f57086 100644
 --- a/app.config.js
 +++ b/app.config.js
 @@ -121,7 +121,7 @@ module.exports = () => {
@@ -22,7 +22,7 @@ index 7fbe94e..5665fc2 100644
        plugins,
        slug: 'ngotakstream-qx',
 -      version: '1.0.3',
-+      version: '1.0.4',
++      version: '1.0.5',
        userInterfaceStyle: 'dark',
        experiments: {
          reactCompiler: true,
@@ -31,10 +31,51 @@ index 7fbe94e..5665fc2 100644
          minSdkVersion: 24,
          package: PACKAGE_NAME,
 -        versionCode: 193,
-+        versionCode: 194,
++        versionCode: 195,
          permissions: [
            'FOREGROUND_SERVICE',
            'FOREGROUND_SERVICE_DATA_SYNC',
+diff --git a/package-lock.json b/package-lock.json
+index 5e6a2e2..1fe4502 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -44,6 +44,7 @@
+         "expo-font": "~57.0.1",
+         "expo-intent-launcher": "~57.0.1",
+         "expo-navigation-bar": "~57.0.2",
++        "expo-screen-orientation": "~57.0.2",
+         "expo-status-bar": "~57.0.1",
+         "expo-system-ui": "~57.0.2",
+         "nativewind": "^4.2.1",
+@@ -10326,6 +10327,16 @@
+         "react-native": "*"
+       }
+     },
++    "node_modules/expo-screen-orientation": {
++      "version": "57.0.2",
++      "resolved": "https://registry.npmjs.org/expo-screen-orientation/-/expo-screen-orientation-57.0.2.tgz",
++      "integrity": "sha512-9wIa/dU561fidHYChkg6LIDAcYr8uMBa8fOws1Km9/slaF3N/a2kgcy0TUZWvNIe7at3r4g2kVva9vRBJBkaEQ==",
++      "license": "MIT",
++      "peerDependencies": {
++        "expo": "*",
++        "react-native": "*"
++      }
++    },
+     "node_modules/expo-server": {
+       "version": "57.0.1",
+       "resolved": "https://registry.npmjs.org/expo-server/-/expo-server-57.0.1.tgz",
+diff --git a/package.json b/package.json
+index 722aede..890ae87 100644
+--- a/package.json
++++ b/package.json
+@@ -52,6 +52,7 @@
+     "expo-font": "~57.0.1",
+     "expo-intent-launcher": "~57.0.1",
+     "expo-navigation-bar": "~57.0.2",
++    "expo-screen-orientation": "~57.0.2",
+     "expo-status-bar": "~57.0.1",
+     "expo-system-ui": "~57.0.2",
+     "nativewind": "^4.2.1",
 diff --git a/src/App.tsx b/src/App.tsx
 index df2940e..b941afd 100644
 --- a/src/App.tsx
@@ -90,10 +131,10 @@ index 49671a6..41ca772 100644
    const showLabels = settingsStorage.showTabBarLabels();
    const bottomBarPadding =
 diff --git a/src/screens/home/Player.tsx b/src/screens/home/Player.tsx
-index dbfc209..0546ea1 100644
+index dbfc209..da3049a 100644
 --- a/src/screens/home/Player.tsx
 +++ b/src/screens/home/Player.tsx
-@@ -23,10 +23,7 @@ import {NativeStackScreenProps} from '@react-navigation/native-stack';
+@@ -23,10 +23,8 @@ import {NativeStackScreenProps} from '@react-navigation/native-stack';
  import {RootStackParamList} from '../../App';
  import {cacheStorage, settingsStorage} from '../../lib/storage';
  import {beginViewingSession} from '../../lib/zustand/viewingStatsStore';
@@ -102,30 +143,87 @@ index dbfc209..0546ea1 100644
 -  LANDSCAPE,
 -} from 'react-native-orientation-locker';
 +import Orientation from 'react-native-orientation-locker';
++import * as ExpoScreenOrientation from 'expo-screen-orientation';
  import VideoPlayer from '@8man/react-native-media-console';
  import {useFocusEffect, useNavigation} from '@react-navigation/native';
  import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-@@ -1186,6 +1183,19 @@ const Player = ({route}: Props): React.JSX.Element => {
+@@ -235,6 +233,35 @@ const reapplyFullscreenMode = (isFullScreenEnabled: boolean) => {
+   }
+ };
+ 
++// Orientasi player — anti-gagal:
++// 1) expo-screen-orientation (jalur resmi Expo, kompatibel New Arch RN 0.86)
++// 2) fallback react-native-orientation-locker (modul lama; pada sebagian
++//    kondisi bridgeless getCurrentActivity() null → no-op senyap, itulah
++//    penyebab player tidak otomatis landscape di build sebelumnya)
++const lockLandscape = async () => {
++  try {
++    await ExpoScreenOrientation.lockAsync(
++      ExpoScreenOrientation.OrientationLock.LANDSCAPE,
++    );
++    return;
++  } catch {}
++  try {
++    Orientation.lockToLandscape();
++  } catch {}
++};
++
++const lockPortrait = async () => {
++  try {
++    await ExpoScreenOrientation.lockAsync(
++      ExpoScreenOrientation.OrientationLock.PORTRAIT_UP,
++    );
++    return;
++  } catch {}
++  try {
++    Orientation.lockToPortrait();
++  } catch {}
++};
++
+ const Player = ({route}: Props): React.JSX.Element => {
+   const [syncReady, setSyncReady] = useState(false);
+ 
+@@ -1179,13 +1206,30 @@ const Player = ({route}: Props): React.JSX.Element => {
+     useCallback(() => {
+       // This code now runs every time the screen is focused
+       reapplyFullscreenMode(isFullScreenRef.current);
++      // Re-assert lock LANDSCAPE setiap kali screen dapat fokus — menutup
++      // race saat transisi pop/push player (lockToPortrait dari instance
++      // sebelumnya bisa datang terlambat) dan saat kembali dari background.
++      lockLandscape();
+ 
+       return () => {
+         exitFullScreen();
++        // Saat screen kehilangan fokus (ditutup/back), pulihkan PORTRAIT.
++        lockPortrait();
+       };
      }, []),
    );
  
 +  // Sumber kebenaran orientasi player: kunci LANDSCAPE selama screen ini
 +  // hidup dan kembalikan PORTRAIT saat screen dilepas. Satu siklus hidup
 +  // deterministik — tidak tergantung branch render (loading/error/player)
-+  // maupun urutan event navigation, jadi tidak ada race antara
-+  // lockToLandscape/lockToPortrait yang bisa meninggalkan lock landscape
-+  // (penyebab layout "desktop" setelah player ditutup).
++  // maupun urutan event navigation.
 +  useEffect(() => {
-+    Orientation.lockToLandscape();
++    lockLandscape();
 +    return () => {
-+      Orientation.lockToPortrait();
++      lockPortrait();
 +    };
 +  }, []);
 +
    useEffect(() => {
      isFullScreenRef.current = isFullScreen;
    }, [isFullScreen]);
-@@ -1520,7 +1530,6 @@ const Player = ({route}: Props): React.JSX.Element => {
+@@ -1224,7 +1268,7 @@ const Player = ({route}: Props): React.JSX.Element => {
+     () =>
+       navigation.addListener('beforeRemove', () => {
+         exitFullScreen();
+-        Orientation.lockToPortrait();
++        lockPortrait();
+       }),
+     [navigation],
+   );
+@@ -1520,7 +1564,6 @@ const Player = ({route}: Props): React.JSX.Element => {
          edges={{right: 'off', top: 'off', left: 'off', bottom: 'off'}}
          className="bg-black flex-1 justify-center items-center">
          <StatusBar translucent={true} hidden={true} />
@@ -133,7 +231,7 @@ index dbfc209..0546ea1 100644
          {/* create ripple effect */}
          <TouchableNativeFeedback
            background={TouchableNativeFeedback.Ripple(
-@@ -1551,7 +1560,6 @@ const Player = ({route}: Props): React.JSX.Element => {
+@@ -1551,7 +1594,6 @@ const Player = ({route}: Props): React.JSX.Element => {
      return (
        <SafeAreaView className="bg-black flex-1 justify-center items-center">
          <StatusBar translucent={true} hidden={true} />
@@ -141,7 +239,7 @@ index dbfc209..0546ea1 100644
          <AppText className="text-red-500 text-lg text-center mb-4">
            Failed to load stream. Please try again.
          </AppText>
-@@ -1591,7 +1599,6 @@ const Player = ({route}: Props): React.JSX.Element => {
+@@ -1591,7 +1633,6 @@ const Player = ({route}: Props): React.JSX.Element => {
        }}
        className="bg-black flex-1 relative">
        <StatusBar translucent={true} hidden={true} />
