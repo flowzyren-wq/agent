@@ -1,5 +1,5 @@
 diff --git a/app.config.js b/app.config.js
-index 7fbe94e..63bba1a 100644
+index 7fbe94e..551e473 100644
 --- a/app.config.js
 +++ b/app.config.js
 @@ -121,7 +121,7 @@ module.exports = () => {
@@ -7,7 +7,7 @@ index 7fbe94e..63bba1a 100644
        plugins,
        slug: 'ngotakstream-qx',
 -      version: '1.0.3',
-+      version: '1.0.9',
++      version: '1.0.10',
        userInterfaceStyle: 'dark',
        experiments: {
          reactCompiler: true,
@@ -16,12 +16,12 @@ index 7fbe94e..63bba1a 100644
          minSdkVersion: 24,
          package: PACKAGE_NAME,
 -        versionCode: 193,
-+        versionCode: 199,
++        versionCode: 200,
          permissions: [
            'FOREGROUND_SERVICE',
            'FOREGROUND_SERVICE_DATA_SYNC',
 diff --git a/android/app/build.gradle b/android/app/build.gradle
-index a36ebbb..903dd28 100644
+index a36ebbb..e48b063 100644
 --- a/android/app/build.gradle
 +++ b/android/app/build.gradle
 @@ -101,8 +101,8 @@ android {
@@ -30,8 +30,8 @@ index a36ebbb..903dd28 100644
          targetSdkVersion rootProject.ext.targetSdkVersion
 -        versionCode 193
 -        versionName "1.0.3"
-+        versionCode 199
-+        versionName "1.0.9"
++        versionCode 200
++        versionName "1.0.10"
  
          buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
      }
@@ -101,10 +101,18 @@ index df2940e..1d1abf6 100644
      'You have passed a style to FlashList',
      'new NativeEventEmitter()',
 diff --git a/src/screens/home/Player.tsx b/src/screens/home/Player.tsx
-index dbfc209..4f676cb 100644
+index dbfc209..d721fc3 100644
 --- a/src/screens/home/Player.tsx
 +++ b/src/screens/home/Player.tsx
-@@ -27,6 +27,7 @@ import Orientation, {
+@@ -4,6 +4,7 @@ import {
+   AppState,
+   AppStateStatus,
+   BackHandler,
++  InteractionManager,
+   ScrollView,
+   Text,
+   ToastAndroid,
+@@ -27,6 +28,7 @@ import Orientation, {
    OrientationLocker,
    LANDSCAPE,
  } from 'react-native-orientation-locker';
@@ -112,7 +120,7 @@ index dbfc209..4f676cb 100644
  import VideoPlayer from '@8man/react-native-media-console';
  import {useFocusEffect, useNavigation} from '@react-navigation/native';
  import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-@@ -214,6 +215,13 @@ const exitFullScreen = () => {
+@@ -214,6 +216,13 @@ const exitFullScreen = () => {
      NavigationBar.setVisibilityAsync('visible');
      StatusBar.setHidden(false, 'slide');
    }
@@ -126,7 +134,7 @@ index dbfc209..4f676cb 100644
  };
  
  const applyFullscreenMode = (isFullScreenEnabled: boolean) => {
-@@ -235,6 +243,26 @@ const reapplyFullscreenMode = (isFullScreenEnabled: boolean) => {
+@@ -235,20 +244,65 @@ const reapplyFullscreenMode = (isFullScreenEnabled: boolean) => {
    }
  };
  
@@ -153,7 +161,53 @@ index dbfc209..4f676cb 100644
  const Player = ({route}: Props): React.JSX.Element => {
    const [syncReady, setSyncReady] = useState(false);
  
-@@ -1179,6 +1207,7 @@ const Player = ({route}: Props): React.JSX.Element => {
++  // Kunci LANDSCAPE sejak commit pertama, imperatif. Kompensasi atas JS
++  // thread yang lebih sibuk daripada base (fitur sync/statistik hasil
++  // rekonstruksi); topologi base (OrientationLocker per-branch +
++  // lockToPortrait via exitFullScreen) tetap utuh.
++  useEffect(() => {
++    Orientation.lockToLandscape();
++  }, []);
++
+   useEffect(() => {
+     let mounted = true;
+-    syncFromSharedFolder()
+-      .catch(error => console.warn('[NgotakSync] Player sync failed:', error))
+-      .finally(() => {
+-        if (mounted) {
+-          setSyncReady(true);
+-        }
+-      });
++    let timer: ReturnType<typeof setTimeout> | undefined;
++    // Sync folder bersama DITUNDA sampai transisi navigasi selesai dan
++    // rotasi landscape sempat terpasang. I/O SAF (binder IPC per read,
++    // plus tulis manifest balik) di sini terbukti menyibukkan JS thread
++    // dan menunda setImmediate milik OrientationLocker — penyebab player
++    // lama berputar ke landscape. Base ValoraFilm tidak punya fitur sync
++    // ini sama sekali; fitur tetap berjalan penuh, hanya dijadwalkan ulang.
++    const interactionTask = InteractionManager.runAfterInteractions(() => {
++      timer = setTimeout(() => {
++        syncFromSharedFolder()
++          .catch(error =>
++            console.warn('[NgotakSync] Player sync failed:', error),
++          )
++          .finally(() => {
++            if (mounted) {
++              setSyncReady(true);
++            }
++          });
++      }, 600);
++    });
+     return () => {
+       mounted = false;
++      interactionTask.cancel();
++      if (timer) {
++        clearTimeout(timer);
++      }
+     };
+   }, []);
+ 
+@@ -1179,6 +1233,7 @@ const Player = ({route}: Props): React.JSX.Element => {
      useCallback(() => {
        // This code now runs every time the screen is focused
        reapplyFullscreenMode(isFullScreenRef.current);
@@ -161,7 +215,7 @@ index dbfc209..4f676cb 100644
  
        return () => {
          exitFullScreen();
-@@ -1196,6 +1225,7 @@ const Player = ({route}: Props): React.JSX.Element => {
+@@ -1196,6 +1251,7 @@ const Player = ({route}: Props): React.JSX.Element => {
        (nextAppState: AppStateStatus) => {
          if (nextAppState === 'active') {
            reapplyFullscreenMode(isFullScreenRef.current);
@@ -169,7 +223,7 @@ index dbfc209..4f676cb 100644
          }
        },
      );
-@@ -1220,14 +1250,10 @@ const Player = ({route}: Props): React.JSX.Element => {
+@@ -1220,14 +1276,10 @@ const Player = ({route}: Props): React.JSX.Element => {
      };
    }, [navigation]);
  
@@ -188,7 +242,7 @@ index dbfc209..4f676cb 100644
  
    // Reset track selections when stream changes
    useEffect(() => {
-@@ -1593,6 +1619,25 @@ const Player = ({route}: Props): React.JSX.Element => {
+@@ -1593,6 +1645,25 @@ const Player = ({route}: Props): React.JSX.Element => {
        <StatusBar translucent={true} hidden={true} />
        <OrientationLocker orientation={LANDSCAPE} />
  
@@ -207,7 +261,7 @@ index dbfc209..4f676cb 100644
 +        <AppText
 +          style={{fontSize: 10, color: 'rgba(255,255,255,0.45)'}}
 +          allowFontScaling={false}>
-+          v1.0.9
++          v1.0.10
 +        </AppText>
 +      </View>
 +
